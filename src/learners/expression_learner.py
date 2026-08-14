@@ -22,9 +22,11 @@ from src.plugin_runtime.host.hook_spec_registry import HookSpec, HookSpecRegistr
 from src.prompt.prompt_manager import prompt_manager
 from src.services.llm_service import LLMServiceClient
 
+from .bad_meme_filter import filter_bad_meme_expressions
 from .expression_review_store import append_ai_review_log
 from .expression_style_utils import normalize_expression_style_for_learning
 from .expression_utils import check_expression_suitability, parse_expression_response
+from .image_content_filter import filter_bad_image_expressions
 
 if TYPE_CHECKING:
     from src.chat.message_receive.message import SessionMessage
@@ -430,6 +432,12 @@ class ExpressionLearner:
         raw_expressions = after_extract_kwargs.get("expressions")
         if raw_expressions is not None:
             expressions = self._deserialize_expressions(raw_expressions)
+
+        # 烂梗过滤：剔除 situation 或 style 命中烂梗规则的候选
+        expressions, _ = filter_bad_meme_expressions(expressions, session_id=learning_session_id)
+
+        # 图片/表情包合规过滤：剔除 situation 或 style 命中违规图片/表情包规则的候选
+        expressions, _ = filter_bad_image_expressions(expressions, session_id=learning_session_id)
 
         if not expressions:
             logger.info("没有可学习的表达方式")

@@ -26,6 +26,7 @@ from typing import (
 )
 
 import asyncio
+import contextlib
 import inspect
 import shutil
 import stat
@@ -133,6 +134,7 @@ class PluginRuntimeManager(
         )
         self._adapter_transition_lock = asyncio.Lock()
         self._offline_adapter_plugin_ids: Set[str] = set()
+        self._plugin_restart_task: Optional["asyncio.Task[Any]"] = None
 
     async def _dispatch_platform_inbound(self, envelope: InboundMessageEnvelope) -> None:
         """接收 Platform IO 审核后的入站消息并送入主消息链。
@@ -209,10 +211,7 @@ class PluginRuntimeManager(
             unique_plugin_ids = sorted(set(plugin_ids))
             if len(unique_plugin_ids) <= 1:
                 continue
-            reason = (
-                f"LLM Provider client_type 冲突: {client_type} 被以下插件重复声明: "
-                f"{', '.join(unique_plugin_ids)}"
-            )
+            reason = f"LLM Provider client_type 冲突: {client_type} 被以下插件重复声明: {', '.join(unique_plugin_ids)}"
             for plugin_id in unique_plugin_ids:
                 blocked_reasons[plugin_id] = reason
         return blocked_reasons
@@ -261,8 +260,7 @@ class PluginRuntimeManager(
         third_party_plugin_ids = set(third_party_dependencies)
 
         builtin_needs_third_party = any(
-            dependency in third_party_plugin_ids
-            and dependency not in adapter_plugin_ids
+            dependency in third_party_plugin_ids and dependency not in adapter_plugin_ids
             for dependencies in builtin_dependencies.values()
             for dependency in dependencies
         )
@@ -309,17 +307,12 @@ class PluginRuntimeManager(
 
         signature = inspect.signature(supervisor_cls)
         accepts_var_keyword = any(
-            parameter.kind == inspect.Parameter.VAR_KEYWORD
-            for parameter in signature.parameters.values()
+            parameter.kind == inspect.Parameter.VAR_KEYWORD for parameter in signature.parameters.values()
         )
         if accepts_var_keyword:
             return supervisor_cls(**kwargs)
 
-        supported_kwargs = {
-            key: value
-            for key, value in kwargs.items()
-            if key in signature.parameters
-        }
+        supported_kwargs = {key: value for key, value in kwargs.items() if key in signature.parameters}
         return supervisor_cls(**supported_kwargs)
 
     def _resolve_runtime_plugin_dirs(self) -> Tuple[List[Path], List[Path]]:
@@ -667,9 +660,7 @@ class PluginRuntimeManager(
                 for group_name, description in _RUNTIME_GROUP_DESCRIPTIONS.items()
                 if group_name in started_group_names
             ]
-            logger.info(
-                f"已启动 {len(started_supervisors)} 个独立插件运行时：{'；'.join(runtime_descriptions)}"
-            )
+            logger.info(f"已启动 {len(started_supervisors)} 个独立插件运行时：{'；'.join(runtime_descriptions)}")
         except Exception as e:
             logger.error(f"插件运行时启动失败: {e}", exc_info=True)
             await self._stop_plugin_file_watcher()
@@ -701,6 +692,11 @@ class PluginRuntimeManager(
             await self._hook_dispatcher.stop()
 
         coroutines: List[Coroutine[Any, Any, None]] = []
+        if self._plugin_restart_task is not None and not self._plugin_restart_task.done():
+            self._plugin_restart_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await self._plugin_restart_task
+        self._plugin_restart_task = None
         if self._builtin_supervisor:
             coroutines.append(self._builtin_supervisor.stop())
         if self._third_party_supervisor:
@@ -957,7 +953,9 @@ class PluginRuntimeManager(
         if not normalized_plugin_ids:
             return True
 
-        blocked_plugin_ids = [plugin_id for plugin_id in normalized_plugin_ids if plugin_id in self._blocked_plugin_reasons]
+        blocked_plugin_ids = [
+            plugin_id for plugin_id in normalized_plugin_ids if plugin_id in self._blocked_plugin_reasons
+        ]
         if blocked_plugin_ids:
             logger.warning(
                 "以下插件当前被依赖流水线阻止加载，已拒绝重载请求: "
@@ -1094,8 +1092,7 @@ class PluginRuntimeManager(
             restored_plugin_ids = requested_plugin_ids & self._get_loaded_adapter_plugin_ids()
             self._offline_adapter_plugin_ids.difference_update(restored_plugin_ids)
             failed_plugins = {
-                plugin_id: "适配器插件重新加载失败"
-                for plugin_id in sorted(self._offline_adapter_plugin_ids)
+                plugin_id: "适配器插件重新加载失败" for plugin_id in sorted(self._offline_adapter_plugin_ids)
             }
             return AdapterRuntimeTransitionResult(
                 success=not failed_plugins,
@@ -1627,8 +1624,7 @@ class PluginRuntimeManager(
         resolved_plugin_path = plugin_path.resolve()
         trusted_plugin_dirs = [Path(path).resolve() for path in getattr(supervisor, "_trusted_plugin_dirs", [])]
         if plugin_type_filter == "trusted_or_adapter" and any(
-            self._plugin_dir_matches(resolved_plugin_path, trusted_dir)
-            for trusted_dir in trusted_plugin_dirs
+            self._plugin_dir_matches(resolved_plugin_path, trusted_dir) for trusted_dir in trusted_plugin_dirs
         ):
             return True
 
@@ -1781,6 +1777,12 @@ class PluginRuntimeManager(
         这里仅负责源码、清单等会影响插件装载状态的文件；配置文件的变化会由
         单独的 per-plugin watcher 处理，并定向派发给目标插件的
         ``on_config_update()``，避免放大成不必要的跨插件 reload。
+
+        注意：完整重启插件运行时（停止两个 Runner + 重新加载全部插件）耗时可能
+        超过文件监视器的回调超时（默认 15s）。若在回调内直接等待重启完成，会被
+        ``wait_for`` 取消，留下半停止状态的运行时且无法自动恢复。因此这里只做
+        变更筛选与去重，实际重启放入后台任务执行，重启自身的异常与失败有独立
+        日志上报。
         """
         if not self._started or not changes:
             return
@@ -1794,16 +1796,29 @@ class PluginRuntimeManager(
         if not relevant_source_changes:
             return
 
-        dependency_sync_state = await self._sync_plugin_dependencies(plugin_dirs)
-        restart_reason = "file_watcher"
-        if dependency_sync_state.environment_changed:
-            restart_reason = "file_watcher_dependency_install"
-        elif dependency_sync_state.blocked_changed_plugin_ids:
-            restart_reason = "file_watcher_blocklist_changed"
+        if self._plugin_restart_task is not None and not self._plugin_restart_task.done():
+            logger.info("插件源码变更触发的运行时重启仍在进行中，本次变更将在下一轮重启中生效")
+            return
 
-        restarted = await self._restart_supervisors(restart_reason)
-        if not restarted:
-            logger.warning(f"插件源码变更后重启 Supervisor 失败: {restart_reason}")
+        self._plugin_restart_task = asyncio.create_task(self._restart_runtime_for_source_changes(plugin_dirs))
+
+    async def _restart_runtime_for_source_changes(self, plugin_dirs: List[Path]) -> None:
+        """在后台任务中执行插件源码变更触发的运行时重启。"""
+        try:
+            dependency_sync_state = await self._sync_plugin_dependencies(plugin_dirs)
+            restart_reason = "file_watcher"
+            if dependency_sync_state.environment_changed:
+                restart_reason = "file_watcher_dependency_install"
+            elif dependency_sync_state.blocked_changed_plugin_ids:
+                restart_reason = "file_watcher_blocklist_changed"
+
+            restarted = await self._restart_supervisors(restart_reason)
+            if not restarted:
+                logger.warning(f"插件源码变更后重启 Supervisor 失败: {restart_reason}")
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            logger.error(f"插件源码变更后重启 Supervisor 异常: {exc}", exc_info=True)
 
     @staticmethod
     def _plugin_dir_matches(path: Path, plugin_dir: Path) -> bool:

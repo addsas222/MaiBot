@@ -18,7 +18,17 @@ from src.maisaka.jargon_context_matcher import is_jargon_reference_text
 from src.prompt.prompt_manager import prompt_manager
 from src.services.llm_service import LLMServiceClient
 
+from .bad_meme_filter import (
+    filter_bad_meme_jargons,
+    filter_bad_meme_jargons_with_llm,
+    judge_bad_meme_with_llm,
+)
 from .expression_utils import parse_jargon_response
+from .image_content_filter import (
+    filter_bad_image_jargons,
+    filter_bad_image_jargons_with_llm,
+    judge_bad_image_with_llm,
+)
 from .jargon_miner import JargonEntry, JargonEvidenceMessageGroup, JargonMiner
 
 if TYPE_CHECKING:
@@ -767,6 +777,32 @@ class JargonLearner:
 
         entries: List[JargonEntry] = []
         skipped_entries: list[dict[str, str]] = []
+
+        # 烂梗过滤：先走规则层，再对剩余候选做一次 LLM 批量语义判定（judge_bad_meme）
+        jargon_entries, rule_rejected = filter_bad_meme_jargons(jargon_entries, session_id=self.session_id)
+        for content, source_id, category in rule_rejected:
+            skipped_entries.append({"content": content, "source_id": source_id, "reason": f"bad_meme:{category}"})
+
+        if jargon_entries:
+            bad_contents = await judge_bad_meme_with_llm(jargon_entries, session_id=self.session_id)
+            jargon_entries, llm_rejected = filter_bad_meme_jargons_with_llm(
+                jargon_entries, bad_contents, session_id=self.session_id
+            )
+            for content, source_id, category in llm_rejected:
+                skipped_entries.append({"content": content, "source_id": source_id, "reason": f"bad_meme:{category}"})
+
+        # 图片/表情包合规过滤：先走规则层，再对剩余候选做一次 LLM 批量语义判定（judge_bad_image）
+        jargon_entries, image_rule_rejected = filter_bad_image_jargons(jargon_entries, session_id=self.session_id)
+        for content, source_id, category in image_rule_rejected:
+            skipped_entries.append({"content": content, "source_id": source_id, "reason": f"bad_image:{category}"})
+
+        if jargon_entries:
+            bad_image_contents = await judge_bad_image_with_llm(jargon_entries, session_id=self.session_id)
+            jargon_entries, image_llm_rejected = filter_bad_image_jargons_with_llm(
+                jargon_entries, bad_image_contents, session_id=self.session_id
+            )
+            for content, source_id, category in image_llm_rejected:
+                skipped_entries.append({"content": content, "source_id": source_id, "reason": f"bad_image:{category}"})
 
         for content, source_id in jargon_entries:
             content = content.strip()

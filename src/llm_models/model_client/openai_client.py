@@ -151,6 +151,50 @@ PROVIDER_REASONING_KEYS_BY_DOMAIN: Dict[str, str] = {
 }
 """按 provider 域名指定的原生推理字段名。"""
 
+KIMI_K_SERIES_MODEL_IDENTIFIER_PREFIX = "kimi-k"
+"""Kimi K 系列模型的标识符前缀（kimi-k2.x、kimi-k3 等）。"""
+
+_MODELS_REQUIRING_OMIT_TEMPERATURE: Set[Tuple[str, str]] = set()
+"""记录本进程内已确认「仅支持固定 temperature」的模型，键为 (base_url, model_identifier)。
+
+命中后直接省略 temperature，避免每次请求先失败一次再重试。
+"""
+
+
+def _is_kimi_k_series_model(model_identifier: str) -> bool:
+    """判断模型标识符是否属于 Kimi K 系列。
+
+    Kimi K 系列（如 kimi-k2.6、kimi-k3）对采样参数有特殊约束：
+    1. temperature/top_p/n/presence_penalty/frequency_penalty 均为固定值，
+       显式指定其他值会直接返回参数错误；
+    2. 思考模式下的多步工具调用必须保留 assistant 消息中的 reasoning_content。
+
+    Args:
+        model_identifier: 模型标识符。
+
+    Returns:
+        bool: 属于 Kimi K 系列时返回 True。
+    """
+    return model_identifier.strip().startswith(KIMI_K_SERIES_MODEL_IDENTIFIER_PREFIX)
+
+
+def _is_fixed_temperature_error(error: APIStatusError) -> bool:
+    """判断该 400 错误是否为「temperature 为固定值、仅接受默认取值」。
+
+    Kimi K 系列（以及具备相同约束的模型）在显式指定非默认 temperature 时会
+    返回形如 "invalid temperature: only 1 is allowed for this model" 的报错。
+
+    Args:
+        error: OpenAI SDK 抛出的状态错误。
+
+    Returns:
+        bool: 命中该特征返回 True。
+    """
+    if error.status_code != 400:
+        return False
+    error_message = _build_api_status_message(error).lower()
+    return "invalid temperature" in error_message and "only" in error_message and "allowed" in error_message
+
 
 def _build_fallback_tool_call_id(prefix: str) -> str:
     """为缺失原始调用 ID 的工具调用生成唯一兜底标识。"""
@@ -455,13 +499,30 @@ def _sanitize_messages_for_toolless_request(items: List[ContextItem]) -> List[Co
     return [item for item in items if not isinstance(item, (FunctionCallItem, FunctionCallOutputItem))]
 
 
-def _convert_assistant_item_group(items: List[ContextItem]) -> ChatCompletionAssistantMessageParam | None:
-    """把相邻的模型输出 Items 折叠为 Chat assistant message。"""
+def _convert_assistant_item_group(
+    items: List[ContextItem],
+    *,
+    preserve_reasoning_content: bool = False,
+) -> ChatCompletionAssistantMessageParam | None:
+    """把相邻的模型输出 Items 折叠为 Chat assistant message。
 
+    Args:
+        items: 相邻的模型输出 Items。
+        preserve_reasoning_content: 是否将 ReasoningItem 的原文以
+            `reasoning_content` 字段保留在 assistant 消息中。Kimi K2.x
+            系列在思考模式的多步工具调用中要求保留该字段。
+
+    Returns:
+        ChatCompletionAssistantMessageParam | None: 折叠后的 assistant 消息；
+        无任何可移植内容时返回 `None`。
+    """
     text_parts: List[str] = []
+    reasoning_parts: List[str] = []
     tool_calls: List[ContextToolCall] = []
     for item in items:
-        if isinstance(item, AssistantMessageItem):
+        if isinstance(item, ReasoningItem):
+            reasoning_parts.extend(item.text_parts)
+        elif isinstance(item, AssistantMessageItem):
             for part in item.parts:
                 part_text = _get_portable_text_part(part)
                 if part_text is None:
@@ -471,7 +532,7 @@ def _convert_assistant_item_group(items: List[ContextItem]) -> ChatCompletionAss
             tool_calls.append(item.tool_call)
 
     content = "".join(text_parts)
-    if not content and not tool_calls:
+    if not content and not tool_calls and not reasoning_parts:
         return None
     payload: ChatCompletionAssistantMessageParam = {
         "role": "assistant",
@@ -479,14 +540,22 @@ def _convert_assistant_item_group(items: List[ContextItem]) -> ChatCompletionAss
     }
     if tool_calls:
         payload["tool_calls"] = _convert_assistant_tool_calls(tool_calls)
+    if preserve_reasoning_content and reasoning_parts:
+        payload["reasoning_content"] = "\n".join(reasoning_parts)
     return payload
 
 
-def _convert_messages(items: List[ContextItem]) -> List[ChatCompletionMessageParam]:
+def _convert_messages(
+    items: List[ContextItem],
+    *,
+    preserve_reasoning_content: bool = False,
+) -> List[ChatCompletionMessageParam]:
     """将内部消息列表转换为 OpenAI 兼容消息列表。
 
     Args:
         items: 内部 Context Items。
+        preserve_reasoning_content: 是否在 assistant 消息中保留
+            reasoning_content 原文（Kimi K2.x 系列多步工具调用需要）。
 
     Returns:
         List[ChatCompletionMessageParam]: OpenAI SDK 所需的消息结构列表。
@@ -538,7 +607,10 @@ def _convert_messages(items: List[ContextItem]) -> List[ChatCompletionMessagePar
                     break
                 group_items.append(next_item)
                 index += 1
-            assistant_payload = _convert_assistant_item_group(group_items)
+            assistant_payload = _convert_assistant_item_group(
+                group_items,
+                preserve_reasoning_content=preserve_reasoning_content,
+            )
             if assistant_payload is not None:
                 converted_messages.append(assistant_payload)
             continue
@@ -1383,6 +1455,7 @@ class OpenaiClient(AdapterClient[AsyncStream[ChatCompletionChunk], ChatCompletio
         Returns:
             ProviderStreamResponseHandler[AsyncStream[ChatCompletionChunk]]: 默认流式处理器。
         """
+
         async def default_stream_handler(
             resp_stream: AsyncStream[ChatCompletionChunk],
             flag: asyncio.Event | None,
@@ -1411,6 +1484,7 @@ class OpenaiClient(AdapterClient[AsyncStream[ChatCompletionChunk], ChatCompletio
         Returns:
             ProviderResponseParser[ChatCompletion]: 默认非流式解析器。
         """
+
         def default_response_parser(
             response: ChatCompletion,
         ) -> Tuple[APIResponse, UsageTuple | None]:
@@ -1451,6 +1525,7 @@ class OpenaiClient(AdapterClient[AsyncStream[ChatCompletionChunk], ChatCompletio
             "request_kwargs": {},
         }
         model_info = request.model_info
+        is_kimi_k_series = _is_kimi_k_series_model(model_info.model_identifier)
 
         try:
             request_messages = (
@@ -1458,7 +1533,10 @@ class OpenaiClient(AdapterClient[AsyncStream[ChatCompletionChunk], ChatCompletio
                 if request.tool_options
                 else _sanitize_messages_for_toolless_request(request.context_items)
             )
-            messages_payload: List[ChatCompletionMessageParam] = _convert_messages(request_messages)
+            messages_payload: List[ChatCompletionMessageParam] = _convert_messages(
+                request_messages,
+                preserve_reasoning_content=is_kimi_k_series,
+            )
             tools_payload: List[ChatCompletionToolParam] | None = (
                 _convert_tool_options(request.tool_options) if request.tool_options else None
             )
@@ -1468,16 +1546,21 @@ class OpenaiClient(AdapterClient[AsyncStream[ChatCompletionChunk], ChatCompletio
                 reserved_body_keys=CHAT_COMPLETIONS_RESERVED_EXTRA_BODY_KEYS,
             )
 
-            temperature_argument = (
-                omit if "temperature" in request_overrides.extra_body else _coerce_openai_argument(request.temperature)
-            )
+            # 已知仅支持固定 temperature 的模型（Kimi K 系列及历史报错命中的模型）
+            cache_key = (self.api_provider.base_url or "", model_info.model_identifier)
+            omit_temperature = is_kimi_k_series or cache_key in _MODELS_REQUIRING_OMIT_TEMPERATURE
 
-            async def _dispatch(use_max_completion_tokens: bool) -> Tuple[APIResponse, UsageTuple | None]:
+            async def _dispatch(
+                use_max_completion_tokens: bool,
+                omit_temperature: bool,
+            ) -> Tuple[APIResponse, UsageTuple | None]:
                 """构造并发起一次 chat.completions 请求。
 
                 Args:
                     use_max_completion_tokens: 为 True 时改用 max_completion_tokens 承载
                         最大输出 token 数，并省略原生 max_tokens（适配 gpt-5 系列等模型）。
+                    omit_temperature: 为 True 时省略 temperature（适配仅支持固定
+                        采样参数的模型，如 Kimi K 系列）。
                 """
                 # 每次用副本，避免重试两次之间相互污染 extra_body
                 extra_body = dict(request_overrides.extra_body)
@@ -1495,6 +1578,14 @@ class OpenaiClient(AdapterClient[AsyncStream[ChatCompletionChunk], ChatCompletio
                         if "max_tokens" in extra_body or "max_completion_tokens" in extra_body
                         else _coerce_openai_argument(request.max_tokens)
                     )
+                if omit_temperature:
+                    # 清除用户显式写入 extra_params.body 的 temperature，否则重试仍会发送
+                    extra_body.pop("temperature", None)
+                    temperature_argument: Any | Omit = omit
+                elif "temperature" in extra_body:
+                    temperature_argument = omit
+                else:
+                    temperature_argument = _coerce_openai_argument(request.temperature)
                 snapshot_provider_request["request_kwargs"] = {
                     "extra_body": extra_body or None,
                     "extra_headers": request_overrides.extra_headers or None,
@@ -1551,7 +1642,6 @@ class OpenaiClient(AdapterClient[AsyncStream[ChatCompletionChunk], ChatCompletio
 
             # 已知仅支持 max_completion_tokens 的模型直接走对应分支；否则先按常规发送，
             # 命中「max_tokens 不被支持」的 400 错误时自动改用 max_completion_tokens 重试并记忆。
-            cache_key = (self.api_provider.base_url or "", model_info.model_identifier)
             use_mct = cache_key in _MODELS_REQUIRING_MAX_COMPLETION_TOKENS
             # 仅当本次确实发送了原生 max_tokens（显式参数或 extra_body 嵌套传入）时，才把
             # 「max_tokens 不被支持」的 400 归因于该模型；否则可能把本就没发 max_tokens 的
@@ -1561,14 +1651,22 @@ class OpenaiClient(AdapterClient[AsyncStream[ChatCompletionChunk], ChatCompletio
                 or (request.max_tokens is not None and "max_completion_tokens" not in request_overrides.extra_body)
             )
             try:
-                response_result = await _dispatch(use_mct)
+                response_result = await _dispatch(use_mct, omit_temperature)
             except APIStatusError as exc:
                 if sent_legacy_max_tokens and _is_max_tokens_unsupported_error(exc):
                     _MODELS_REQUIRING_MAX_COMPLETION_TOKENS.add(cache_key)
                     logger.info(
                         f"模型 '{model_info.name}' 不支持 max_tokens，自动改用 max_completion_tokens 重试并记忆该模型。"
                     )
-                    response_result = await _dispatch(True)
+                    response_result = await _dispatch(True, omit_temperature)
+                elif not omit_temperature and _is_fixed_temperature_error(exc):
+                    # 命中「temperature 为固定值」的 400 时省略 temperature 重试并记忆，
+                    # 避免同一模型的后续请求每次都先失败一次。
+                    _MODELS_REQUIRING_OMIT_TEMPERATURE.add(cache_key)
+                    logger.info(
+                        f"模型 '{model_info.name}' 仅支持固定 temperature，自动省略 temperature 重试并记忆该模型。"
+                    )
+                    response_result = await _dispatch(use_mct, True)
                 else:
                     raise
             response, usage_record = response_result
