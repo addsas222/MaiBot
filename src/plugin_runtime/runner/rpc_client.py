@@ -128,7 +128,9 @@ class RPCClient:
 
         await connection.send_frame(self._codec.encode_envelope(envelope))
 
-        resp_data = await asyncio.wait_for(connection.recv_frame(), timeout=10.0)
+        # 握手超时需覆盖 Host 启动期间的事件循环阻塞（如 A_memorix 初始化），与 Host 侧 _runner_spawn_timeout(30s) 对齐
+        logger.info("等待 Host 握手响应...")
+        resp_data = await asyncio.wait_for(connection.recv_frame(), timeout=30.0)
         response = self._codec.decode_envelope(resp_data)
         resp_payload = HelloResponsePayload.model_validate(response.payload)
 
