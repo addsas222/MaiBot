@@ -213,6 +213,7 @@ class MainSystem:
             from src.chat.image_system.image_cache_cleanup import periodic_image_cache_cleanup
             from src.emoji_system.emoji_cache_cleanup import periodic_emoji_cache_cleanup
             from src.emoji_system.emoji_manager import emoji_manager
+            from src.learners.bad_meme_filter import periodic_danger_word_sync
             from src.services.image_path_maintenance_service import (
                 run_image_path_maintenance_background,
                 should_schedule_image_path_maintenance_background,
@@ -226,6 +227,7 @@ class MainSystem:
                 emoji_manager.periodic_emoji_maintenance(),
                 periodic_emoji_cache_cleanup(),
                 periodic_image_cache_cleanup(),
+                periodic_danger_word_sync(),
                 self.app.run(),
                 self.server.run(),
             ]

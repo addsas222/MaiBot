@@ -27,7 +27,9 @@
 ## 模型
 
 - 暂时兼容v4v的图片格式
+- 支持接入 Cohub 平台模型（如 deepseek-v4-pro、glm-5.2、claude-sonnet-5 等）：新增 `scripts/cohub_gateway.py` OpenAI 兼容网关，将 `/v1/chat/completions` 请求翻译为 Cohub completions 调用，自动读取并刷新本地 Cohub 认证 token，支持流式与非流式输出及推理内容（reasoning_content）透传；工具调用以 XML 格式提示注入，模型输出的 XML 工具调用可被 MaiBot 的 XML 兜底解析还原为标准 ToolCall，工具结果可回传继续对话。
 - 支持接入 Kimi K 系列模型（如 kimi-k2.6、kimi-k3）：自动省略固定值的采样参数（temperature 等），避免上游返回参数错误；思考模式的多步工具调用自动保留 assistant 消息中的 reasoning_content。对其他「仅支持固定 temperature」的兼容模型，命中上游 400 报错后会自动省略 temperature 重试并记忆该模型。
+- 模型级别新增 `hard_timeout` 配置项（可选，0 表示禁用硬超时），覆盖任务级硬超时，适配本地模型等耗时较长的推理场景，避免请求被任务级超时强制中断。既有的任务级配置行为不变。
 
 ## 插件运行时
 

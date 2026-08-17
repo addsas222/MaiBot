@@ -292,6 +292,15 @@ class ModelInfo(ConfigBase):
     )
     """模型级别最大token数（可选），会覆盖任务配置中的max_tokens"""
 
+    hard_timeout: float | None = Field(
+        default=None,
+        ge=0,
+        json_schema_extra={
+            "x-widget": "input",
+        },
+    )
+    """模型级别硬超时（秒，可选），会覆盖任务配置中的hard_timeout；设为0表示禁用硬超时，仅依赖服务商自身超时"""
+
     force_stream_mode: bool = Field(
         default=False,
         json_schema_extra={
@@ -395,6 +404,17 @@ class TaskConfig(ConfigBase):
         },
     )
     """任务硬超时（秒），到点未返回则取消请求并尝试切换下一个模型；防止上游代理静默排队导致主循环饥饿"""
+
+    cooldown_seconds: int = Field(
+        default=300,
+        ge=0,
+        json_schema_extra={
+            "x-widget": "input",
+            "step": 1,
+            "advanced": True,
+        },
+    )
+    """模型进入全局冷却的时间（秒）：模型因 429 错误用尽重试后进入冷却，冷却期内不会被选中，到期自动恢复"""
 
 
 class ModelTaskConfig(ConfigBase):

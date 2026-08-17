@@ -41,6 +41,7 @@ from src.llm_models.model_client.base_client import (
     ResponseRequest,
     client_registry,
 )
+from src.llm_models.model_cooldown import model_cooldown_registry
 from src.llm_models.generation_diagnostics import sanitize_diagnostic_url, sanitize_generation_diagnostic
 from src.llm_models.request_snapshot import (
     attach_request_snapshot,
@@ -782,23 +783,46 @@ class LLMOrchestrator:
             for model, scores in self.model_usage.items()
             if not exclude_models or model not in exclude_models
         }
+        # 过滤掉处于全局冷却期的模型（因 429 限流等错误触发，到期自动恢复）
+        available_models = {
+            model: scores
+            for model, scores in available_models.items()
+            if not model_cooldown_registry.is_in_cooldown(model)
+        }
         requested_model_name = str(model_name or "").strip()
         if requested_model_name:
             if exclude_models and requested_model_name in exclude_models:
                 raise RuntimeError(f"指定模型 '{requested_model_name}' 已在本次请求中尝试失败")
+            if model_cooldown_registry.is_in_cooldown(requested_model_name):
+                raise RuntimeError(f"指定模型 '{requested_model_name}' 正在冷却中")
             TempMethodsLLMUtils.get_model_info_by_name(requested_model_name)
             if requested_model_name not in self.model_usage:
                 self.model_usage[requested_model_name] = (0, 0, 0)
             available_models = {requested_model_name: self.model_usage.get(requested_model_name, (0, 0, 0))}
 
+        # 所有可用模型均处于冷却期时，降级选择冷却结束最早的模型，避免请求直接失败
+        degraded_model_name: Optional[str] = None
         if not available_models:
-            raise RuntimeError("没有可用的模型可供选择。所有模型均已尝试失败。")
+            degraded_model_name = model_cooldown_registry.get_earliest_recovery_model(
+                list(self.model_usage.keys())
+                if not exclude_models
+                else [model for model in self.model_usage if model not in exclude_models]
+            )
+            if degraded_model_name is None:
+                raise RuntimeError("没有可用的模型可供选择。所有模型均已尝试失败。")
+            logger.warning(
+                f"任务 '{self.request_type or '未知任务'}' 的所有模型均处于冷却期，"
+                f"降级选择冷却结束最早的模型 '{degraded_model_name}'"
+            )
+            available_models = {degraded_model_name: self.model_usage.get(degraded_model_name, (0, 0, 0))}
 
         ensure_configured_clients_loaded()
 
         strategy = self.model_for_task.selection_strategy.strip().lower()
 
-        if requested_model_name:
+        if degraded_model_name:
+            selected_model_name = degraded_model_name
+        elif requested_model_name:
             selected_model_name = requested_model_name
         elif strategy == "random":
             # 随机选择策略
@@ -1034,6 +1058,9 @@ class LLMOrchestrator:
                         logger.error(
                             f"任务 '{task_display}' 的模型 '{model_info.name}' 在遇到 {e.status_code} 错误并用尽重试次数后仍然失败。{original_error_info}"
                         )
+                        if e.status_code == 429:
+                            # 429 限流错误：模型进入全局冷却，冷却期内不会被选中，到期自动恢复
+                            model_cooldown_registry.enter_cooldown(model_info.name, self.model_for_task.cooldown_seconds)
                         raise ModelAttemptFailed(f"模型 '{model_info.name}' 重试耗尽", original_exception=e) from e
 
                     logger.warning(
@@ -1133,14 +1160,18 @@ class LLMOrchestrator:
         request: ClientRequest,
         model_name: str,
     ) -> APIResponse:
-        """对 `_attempt_request_on_model` 套一层任务级 hard_timeout。
+        """对 `_attempt_request_on_model` 套一层 hard_timeout。
 
         单次模型尝试超时时把 TimeoutError 转成 LLMTaskTimeoutError（继承 ModelAttemptFailed），
         由 `_execute_request` 内既有的 `except ModelAttemptFailed` 分支接住，按"切下一个模型"
         的既有语义处理（penalty +1、usage_penalty -1、failed_models_this_request 登记）。
         全部模型都触发 hard_timeout 时，最后一个 LLMTaskTimeoutError 上抛给调用方。
         """
-        timeout_s = self.model_for_task.hard_timeout
+        # 模型级 hard_timeout 覆盖任务级配置；0 表示禁用硬超时，仅依赖服务商自身超时
+        model_hard_timeout = request.model_info.hard_timeout
+        timeout_s = self.model_for_task.hard_timeout if model_hard_timeout is None else model_hard_timeout
+        if timeout_s <= 0:
+            return await self._attempt_request_on_model(api_provider, client, request=request)
         try:
             return await asyncio.wait_for(
                 self._attempt_request_on_model(api_provider, client, request=request),
