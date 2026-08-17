@@ -416,6 +416,17 @@ class TaskConfig(ConfigBase):
     )
     """模型进入全局冷却的时间（秒）：模型因 429 错误用尽重试后进入冷却，冷却期内不会被选中，到期自动恢复"""
 
+    cooldown_max_seconds: int = Field(
+        default=3600,
+        ge=0,
+        json_schema_extra={
+            "x-widget": "input",
+            "step": 1,
+            "advanced": True,
+        },
+    )
+    """阶梯冷却封顶时长（秒）：模型连续因 429 进入冷却时，冷却时长从 cooldown_seconds 起逐级翻倍，最高不超过该值；设为 0 或小于等于 cooldown_seconds 时退化为固定冷却"""
+
 
 class ModelTaskConfig(ConfigBase):
     """模型配置类"""

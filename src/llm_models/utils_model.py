@@ -41,7 +41,7 @@ from src.llm_models.model_client.base_client import (
     ResponseRequest,
     client_registry,
 )
-from src.llm_models.model_cooldown import model_cooldown_registry
+from src.llm_models.model_cooldown import model_cooldown_registry, model_isolation_registry
 from src.llm_models.generation_diagnostics import sanitize_diagnostic_url, sanitize_generation_diagnostic
 from src.llm_models.request_snapshot import (
     attach_request_snapshot,
@@ -789,24 +789,35 @@ class LLMOrchestrator:
             for model, scores in available_models.items()
             if not model_cooldown_registry.is_in_cooldown(model)
         }
+        # 过滤掉处于隔离状态的模型（因 403 权限等硬错误触发，本次运行不再使用，重启后重新探测）
+        available_models = {
+            model: scores
+            for model, scores in available_models.items()
+            if not model_isolation_registry.is_isolated(model)
+        }
         requested_model_name = str(model_name or "").strip()
         if requested_model_name:
             if exclude_models and requested_model_name in exclude_models:
                 raise RuntimeError(f"指定模型 '{requested_model_name}' 已在本次请求中尝试失败")
             if model_cooldown_registry.is_in_cooldown(requested_model_name):
                 raise RuntimeError(f"指定模型 '{requested_model_name}' 正在冷却中")
+            if model_isolation_registry.is_isolated(requested_model_name):
+                raise RuntimeError(f"指定模型 '{requested_model_name}' 正在隔离中")
             TempMethodsLLMUtils.get_model_info_by_name(requested_model_name)
             if requested_model_name not in self.model_usage:
                 self.model_usage[requested_model_name] = (0, 0, 0)
             available_models = {requested_model_name: self.model_usage.get(requested_model_name, (0, 0, 0))}
 
-        # 所有可用模型均处于冷却期时，降级选择冷却结束最早的模型，避免请求直接失败
+        # 所有可用模型均处于冷却期时，降级选择冷却结束最早的模型，避免请求直接失败；隔离中的模型不参与降级
         degraded_model_name: Optional[str] = None
         if not available_models:
             degraded_model_name = model_cooldown_registry.get_earliest_recovery_model(
-                list(self.model_usage.keys())
-                if not exclude_models
-                else [model for model in self.model_usage if model not in exclude_models]
+                [
+                    model
+                    for model in self.model_usage
+                    if (not exclude_models or model not in exclude_models)
+                    and not model_isolation_registry.is_isolated(model)
+                ]
             )
             if degraded_model_name is None:
                 raise RuntimeError("没有可用的模型可供选择。所有模型均已尝试失败。")
@@ -984,6 +995,8 @@ class LLMOrchestrator:
                     request=active_request,
                     response=response,
                 )
+                # 模型调用成功，清零 429 阶梯冷却的连续次数
+                model_cooldown_registry.reset_strikes(model_info.name)
                 mark_request_succeeded(active_request, response)
                 return response
             except EmptyResponseException as e:
@@ -1059,8 +1072,12 @@ class LLMOrchestrator:
                             f"任务 '{task_display}' 的模型 '{model_info.name}' 在遇到 {e.status_code} 错误并用尽重试次数后仍然失败。{original_error_info}"
                         )
                         if e.status_code == 429:
-                            # 429 限流错误：模型进入全局冷却，冷却期内不会被选中，到期自动恢复
-                            model_cooldown_registry.enter_cooldown(model_info.name, self.model_for_task.cooldown_seconds)
+                            # 429 限流错误：模型进入全局冷却（阶梯递增），冷却期内不会被选中，到期自动恢复
+                            model_cooldown_registry.enter_cooldown(
+                                model_info.name,
+                                self.model_for_task.cooldown_seconds,
+                                self.model_for_task.cooldown_max_seconds,
+                            )
                         raise ModelAttemptFailed(f"模型 '{model_info.name}' 重试耗尽", original_exception=e) from e
 
                     logger.warning(
@@ -1104,6 +1121,9 @@ class LLMOrchestrator:
                     continue
 
                 # 不可重试的HTTP错误
+                if e.status_code == 403:
+                    # 403 权限错误：模型进入隔离，本次运行不再选中，重启后重新探测
+                    model_isolation_registry.isolate(model_info.name)
                 logger.warning(
                     f"任务 '{task_display}' 的模型 '{model_info.name}' 遇到不可重试的HTTP错误: {str(e)}{original_error_info}"
                 )

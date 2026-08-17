@@ -37,6 +37,7 @@ DEFAULT_TASK_CONFIG_TEMPLATES: dict[str, dict[str, Any]] = {
         "selection_strategy": "random",
         "hard_timeout": 120.0,
         "cooldown_seconds": 300,
+        "cooldown_max_seconds": 3600,
     },
     "memory": {
         "model_list": [],
@@ -46,6 +47,7 @@ DEFAULT_TASK_CONFIG_TEMPLATES: dict[str, dict[str, Any]] = {
         "selection_strategy": "random",
         "hard_timeout": 240.0,
         "cooldown_seconds": 300,
+        "cooldown_max_seconds": 3600,
     },
     "mid_memory": {
         "model_list": [],
@@ -55,6 +57,7 @@ DEFAULT_TASK_CONFIG_TEMPLATES: dict[str, dict[str, Any]] = {
         "selection_strategy": "random",
         "hard_timeout": 180.0,
         "cooldown_seconds": 300,
+        "cooldown_max_seconds": 3600,
     },
     "replyer": {
         "model_list": ["deepseek-v4-pro-think", "deepseek-v4-pro-nonthink", "cohub-deepseek-v4-flash", "cohub-glm-5.2"],
@@ -64,6 +67,7 @@ DEFAULT_TASK_CONFIG_TEMPLATES: dict[str, dict[str, Any]] = {
         "selection_strategy": "random",
         "hard_timeout": 240.0,
         "cooldown_seconds": 300,
+        "cooldown_max_seconds": 3600,
     },
     "planner": {
         "model_list": ["deepseek-v4-flash", "cohub-deepseek-v4-flash", "cohub-qwen3.7-plus"],
@@ -73,13 +77,14 @@ DEFAULT_TASK_CONFIG_TEMPLATES: dict[str, dict[str, Any]] = {
         "selection_strategy": "random",
         "hard_timeout": 180.0,
         "cooldown_seconds": 300,
+        "cooldown_max_seconds": 3600,
     },
-    "learner": {"model_list": [], "max_tokens": 4096, "hard_timeout": 120.0, "cooldown_seconds": 300},
-    "expression_use": {"model_list": [], "max_tokens": 1024, "temperature": 0.3, "hard_timeout": 120.0, "cooldown_seconds": 300},
-    "emoji": {"model_list": [], "max_tokens": 4096, "hard_timeout": 120.0, "cooldown_seconds": 300},
-    "vlm": {"model_list": [], "max_tokens": 4096, "hard_timeout": 240.0, "cooldown_seconds": 300},
-    "voice": {"model_list": [], "max_tokens": 4096, "hard_timeout": 120.0, "cooldown_seconds": 300},
-    "embedding": {"model_list": [], "max_tokens": 4096, "hard_timeout": 60.0, "cooldown_seconds": 300},
+    "learner": {"model_list": [], "max_tokens": 4096, "hard_timeout": 120.0, "cooldown_seconds": 300, "cooldown_max_seconds": 3600},
+    "expression_use": {"model_list": [], "max_tokens": 1024, "temperature": 0.3, "hard_timeout": 120.0, "cooldown_seconds": 300, "cooldown_max_seconds": 3600},
+    "emoji": {"model_list": [], "max_tokens": 4096, "hard_timeout": 120.0, "cooldown_seconds": 300, "cooldown_max_seconds": 3600},
+    "vlm": {"model_list": [], "max_tokens": 4096, "hard_timeout": 240.0, "cooldown_seconds": 300, "cooldown_max_seconds": 3600},
+    "voice": {"model_list": [], "max_tokens": 4096, "hard_timeout": 120.0, "cooldown_seconds": 300, "cooldown_max_seconds": 3600},
+    "embedding": {"model_list": [], "max_tokens": 4096, "hard_timeout": 60.0, "cooldown_seconds": 300, "cooldown_max_seconds": 3600},
 }
 
 DEFAULT_MODEL_TEMPLATES: list[dict[str, Any]] = [
