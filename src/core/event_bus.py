@@ -16,6 +16,9 @@ from src.core.types import EventType, MaiMessages
 
 logger = get_logger("event_bus")
 
+MAX_CONCURRENT_TASKS_PER_HANDLER = 8
+"""同一 handler 允许的最大并发 fire-and-forget 任务数，防止高频事件堆积"""
+
 # Handler 签名：接收 MaiMessages，返回 (continue, modified_message)
 EventHandler = Callable[[Optional[MaiMessages]], Coroutine[Any, Any, Tuple[bool, Optional[MaiMessages]]]]
 
@@ -149,10 +152,19 @@ class EventBus:
     ) -> None:
         """创建异步任务执行非拦截型 handler。"""
         try:
+            task_list = self._running_tasks.setdefault(entry.name, [])
+            # 先清理已完成任务，避免回调滞后导致计数虚高
+            active_tasks = [t for t in task_list if not t.done()]
+            self._running_tasks[entry.name] = active_tasks
+            if len(active_tasks) >= MAX_CONCURRENT_TASKS_PER_HANDLER:
+                logger.warning(
+                    f"handler {entry.name} 并发任务数已达上限 {MAX_CONCURRENT_TASKS_PER_HANDLER}，丢弃本次事件"
+                )
+                return
             task = asyncio.create_task(entry.handler(message))
             task.set_name(entry.name)
             task.add_done_callback(lambda t: self._task_done_callback(t, entry.name))
-            self._running_tasks.setdefault(entry.name, []).append(task)
+            active_tasks.append(task)
         except Exception as e:
             logger.error(f"创建 handler 任务 {entry.name} 失败: {e}", exc_info=True)
 

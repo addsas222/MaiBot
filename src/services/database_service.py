@@ -1,5 +1,6 @@
 """数据库服务模块。"""
 
+import asyncio
 import json
 import time
 import traceback
@@ -77,7 +78,7 @@ async def db_save(
     key_field: Optional[str] = None,
     key_value: Optional[Any] = None,
 ) -> Optional[dict[str, Any]]:
-    try:
+    def _run() -> Optional[dict[str, Any]]:
         with get_db_session() as session:
             record = None
             if key_field and key_value is not None:
@@ -95,6 +96,9 @@ async def db_save(
             session.flush()
             session.refresh(record)
             return _to_dict(record)
+
+    try:
+        return await asyncio.to_thread(_run)
     except Exception as e:
         logger.error(f"[DatabaseService] 保存数据库记录出错: {e}")
         traceback.print_exc()
@@ -108,7 +112,7 @@ async def db_get(
     order_by: Optional[str | list[str]] = None,
     single_result: bool = False,
 ) -> Optional[dict[str, Any]] | list[dict[str, Any]]:
-    try:
+    def _run() -> Optional[dict[str, Any]] | list[dict[str, Any]]:
         with get_db_session(auto_commit=False) as session:
             statement = select(model_class)
             if conditions := _build_filters(model_class, filters):
@@ -121,6 +125,9 @@ async def db_get(
             if single_result:
                 return data[0] if data else None
             return data
+
+    try:
+        return await asyncio.to_thread(_run)
     except Exception as e:
         logger.error(f"[DatabaseService] 获取数据库记录出错: {e}")
         traceback.print_exc()
@@ -128,7 +135,7 @@ async def db_get(
 
 
 async def db_update(model_class: type[SQLModel], data: dict[str, Any], filters: Optional[dict[str, Any]] = None) -> int:
-    try:
+    def _run() -> int:
         with get_db_session() as session:
             statement = select(model_class)
             if conditions := _build_filters(model_class, filters):
@@ -140,6 +147,9 @@ async def db_update(model_class: type[SQLModel], data: dict[str, Any], filters: 
                     setattr(record, field_name, value)
                 session.add(record)
             return len(records)
+
+    try:
+        return await asyncio.to_thread(_run)
     except Exception as e:
         logger.error(f"[DatabaseService] 更新数据库记录出错: {e}")
         traceback.print_exc()
@@ -147,13 +157,16 @@ async def db_update(model_class: type[SQLModel], data: dict[str, Any], filters: 
 
 
 async def db_delete(model_class: type[SQLModel], filters: Optional[dict[str, Any]] = None) -> int:
-    try:
+    def _run() -> int:
         with get_db_session() as session:
             statement = delete(model_class)
             if conditions := _build_filters(model_class, filters):
                 statement = statement.where(*conditions)
             result = session.exec(statement)
             return result.rowcount or 0
+
+    try:
+        return await asyncio.to_thread(_run)
     except Exception as e:
         logger.error(f"[DatabaseService] 删除数据库记录出错: {e}")
         traceback.print_exc()
@@ -161,13 +174,16 @@ async def db_delete(model_class: type[SQLModel], filters: Optional[dict[str, Any
 
 
 async def db_count(model_class: type[SQLModel], filters: Optional[dict[str, Any]] = None) -> int:
-    try:
+    def _run() -> int:
         with get_db_session(auto_commit=False) as session:
             statement = select(func.count()).select_from(model_class)
             if conditions := _build_filters(model_class, filters):
                 statement = statement.where(*conditions)
             result = session.exec(cast(Any, statement)).one()
             return int(result or 0)
+
+    try:
+        return await asyncio.to_thread(_run)
     except Exception as e:
         logger.error(f"[DatabaseService] 统计数据库记录出错: {e}")
         traceback.print_exc()

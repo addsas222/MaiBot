@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Iterable, Optional
 
 import json
 import shutil
@@ -26,6 +26,7 @@ from src.webui.dependencies import require_auth
 router = APIRouter(prefix="/memory", tags=["memory"], dependencies=[Depends(require_auth)])
 compat_router = APIRouter(prefix="/api", tags=["memory-compat"], dependencies=[Depends(require_auth)])
 STAGING_ROOT: Optional[Path] = None
+MAX_IMPORT_CHAT_TARGETS = 5000
 
 
 def _upload_staging_root() -> Path:
@@ -1440,13 +1441,16 @@ async def _memory_timeline(
 
 async def _import_chat_targets() -> ImportChatTargetsResponse:
     try:
+        # 导入目标列表按最近活跃排序，最多返回 MAX_IMPORT_CHAT_TARGETS 个，避免大表全量拉取
         with get_db_session() as session:
             rows = list(
                 session.exec(
-                    select(ChatSession).order_by(
+                    select(ChatSession)
+                    .order_by(
                         col(ChatSession.last_active_timestamp).desc(),
                         col(ChatSession.created_timestamp).desc(),
                     )
+                    .limit(MAX_IMPORT_CHAT_TARGETS)
                 ).all()
             )
             session_ids = [str(chat_session.session_id or "").strip() for chat_session in rows]
@@ -1783,12 +1787,20 @@ async def _episode_list(
     if not isinstance(payload, dict) or not isinstance(payload.get("items"), list):
         return payload
 
+    person_ids = set()
+    for item in payload["items"]:
+        if isinstance(item, dict):
+            person_id = _extract_episode_person_id(item)
+            if person_id:
+                person_ids.add(person_id)
+    person_names = _batch_get_person_names(person_ids)
+
     items = []
     for item in payload["items"]:
         if not isinstance(item, dict):
             items.append(item)
             continue
-        items.append(_enrich_episode_person_name(item))
+        items.append(_enrich_episode_person_name(item, person_names))
 
     payload = dict(payload)
     payload["items"] = items
@@ -1853,20 +1865,30 @@ def _get_person_name_for_person_id(person_id: str) -> str:
     clean_person_id = str(person_id or "").strip()
     if not clean_person_id:
         return ""
+    return _batch_get_person_names([clean_person_id]).get(clean_person_id, "")
+
+
+def _batch_get_person_names(person_ids: Iterable[str]) -> dict[str, str]:
+    """批量查询 person_id 对应的 person_name，使用单条 IN 查询避免 N+1。"""
+    clean_ids = sorted({str(person_id or "").strip() for person_id in person_ids if str(person_id or "").strip()})
+    if not clean_ids:
+        return {}
+    result: dict[str, str] = {}
     try:
         with get_db_session(auto_commit=False) as session:
-            statement = select(PersonInfo.person_name).where(col(PersonInfo.person_id) == clean_person_id).limit(1)
-            person_name = session.exec(statement).first()
-            return str(person_name or "").strip()
+            statement = select(PersonInfo.person_id, PersonInfo.person_name).where(
+                col(PersonInfo.person_id).in_(clean_ids)
+            )
+            for person_id, person_name in session.exec(statement).all():
+                result[str(person_id or "").strip()] = str(person_name or "").strip()
     except Exception:
-        return ""
+        pass
+    return result
 
 
-def _enrich_episode_person_name(item: dict) -> dict:
-    enriched = dict(item)
-    item_person_id = str(enriched.get("person_id", "") or "").strip()
-
-    participants = enriched.get("participants")
+def _extract_episode_person_id(item: dict) -> str:
+    item_person_id = str(item.get("person_id", "") or "").strip()
+    participants = item.get("participants")
     if not item_person_id and isinstance(participants, list):
         for participant in participants:
             if isinstance(participant, dict):
@@ -1876,9 +1898,18 @@ def _enrich_episode_person_name(item: dict) -> dict:
             if candidate:
                 item_person_id = candidate
                 break
+    return item_person_id
+
+
+def _enrich_episode_person_name(item: dict, person_names: dict[str, str] | None = None) -> dict:
+    enriched = dict(item)
+    item_person_id = _extract_episode_person_id(enriched)
 
     enriched["person_id"] = item_person_id
-    enriched["person_name"] = _get_person_name_for_person_id(item_person_id)
+    if person_names is not None:
+        enriched["person_name"] = person_names.get(item_person_id, "")
+    else:
+        enriched["person_name"] = _get_person_name_for_person_id(item_person_id)
     return enriched
 
 
@@ -1887,6 +1918,13 @@ async def _profile_list(limit: int) -> dict:
     if not isinstance(payload, dict) or not isinstance(payload.get("items"), list):
         return payload
 
+    person_ids = [
+        str(item.get("person_id", "") or "").strip()
+        for item in payload["items"]
+        if isinstance(item, dict) and str(item.get("person_id", "") or "").strip()
+    ]
+    person_names = _batch_get_person_names(person_ids)
+
     items = []
     for item in payload["items"]:
         if not isinstance(item, dict):
@@ -1894,7 +1932,7 @@ async def _profile_list(limit: int) -> dict:
             continue
         enriched = dict(item)
         person_id = str(enriched.get("person_id", "") or "").strip()
-        enriched["person_name"] = _get_person_name_for_person_id(person_id)
+        enriched["person_name"] = person_names.get(person_id, "")
         items.append(enriched)
 
     payload = dict(payload)

@@ -45,6 +45,9 @@ class AsyncTask:
 class AsyncTaskManager:
     """异步任务管理器"""
 
+    MAX_TASKS = 100
+    """允许同时管理的最大任务数，防止不同名任务无限增长"""
+
     def __init__(self):
         self.tasks: Dict[str, Task] = {}
         """任务列表"""
@@ -88,6 +91,10 @@ class AsyncTaskManager:
             raise TypeError(f"task '{task.__class__.__name__}' 必须是继承 AsyncTask 的子类")
 
         async with self._lock:  # 由于可能需要await等待任务完成，所以需要加异步锁
+            if task.task_name not in self.tasks and len(self.tasks) >= self.MAX_TASKS:
+                logger.error(f"任务数量已达上限 {self.MAX_TASKS}，拒绝启动新任务 '{task.task_name}'")
+                return
+
             if task.task_name in self.tasks:
                 logger.warning(f"已存在名称为 '{task.task_name}' 的任务，正在尝试取消并替换")
                 old_task = self.tasks[task.task_name]

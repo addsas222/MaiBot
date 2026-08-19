@@ -1,4 +1,5 @@
-from typing import Any, Dict, Optional
+from collections import OrderedDict
+from typing import Any, Optional
 
 from src.chat.message_receive.chat_manager import BotChatSession, chat_manager as _chat_manager
 from src.config.config import global_config
@@ -8,12 +9,15 @@ from .maisaka_generator import MaisakaReplyGenerator
 
 logger = get_logger("ReplyerManager")
 
+MAX_REPLIERS = 512
+"""replyer 缓存容量上限，超过后按 LRU 淘汰最久未使用的实例"""
+
 
 class ReplyerManager:
     """统一管理不同类型的回复生成器。"""
 
     def __init__(self) -> None:
-        self._repliers: Dict[str, Any] = {}
+        self._repliers: "OrderedDict[str, Any]" = OrderedDict()
 
     @staticmethod
     def _get_maisaka_generator_type() -> str:
@@ -36,6 +40,7 @@ class ReplyerManager:
         generator_type = self._get_maisaka_generator_type() if replyer_type == "maisaka" else ""
         cache_key = f"{replyer_type}:{generator_type}:{stream_id}"
         if cache_key in self._repliers:
+            self._repliers.move_to_end(cache_key)
             return self._repliers[cache_key]
 
         target_stream = chat_stream or _chat_manager.get_session_by_session_id(stream_id)
@@ -62,6 +67,10 @@ class ReplyerManager:
             raise
 
         self._repliers[cache_key] = replyer
+        self._repliers.move_to_end(cache_key)
+        if len(self._repliers) > MAX_REPLIERS:
+            evicted_key, _ = self._repliers.popitem(last=False)
+            logger.debug(f"[ReplyerManager] 缓存超过上限，淘汰最久未使用的 replyer: {evicted_key}")
         logger.debug(f"Replyer 创建完成: cache_key={cache_key}")
         return replyer
 
