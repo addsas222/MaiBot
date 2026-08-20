@@ -2219,7 +2219,9 @@ class PluginRunner:
     async def _handle_health(self, envelope: Envelope) -> Envelope:
         """处理健康检查"""
         inflight = self._inflight_snapshot()
-        await self._write_debug_event(
+        # 诊断事件写入不阻塞健康检查响应：插件耗时任务可能占满共享线程池，
+        # health 若依赖 to_thread 排队等待线程，会因超时被 Host 误判卡死而整进程重启。
+        self._schedule_debug_event(
             "runner_health_received",
             {
                 "request_id": envelope.request_id,
@@ -2227,7 +2229,7 @@ class PluginRunner:
                 "max_inflight_duration_ms": int(inflight[0].get("duration_ms", 0)) if inflight else 0,
             },
         )
-        await self._dump_inflight_debug("health_check", min_duration_ms=5000)
+        asyncio.get_running_loop().create_task(self._dump_inflight_debug("health_check", min_duration_ms=5000))
         uptime_ms = int((time.monotonic() - self._start_time) * 1000)
         health = HealthPayload(
             healthy=True,
@@ -2239,13 +2241,13 @@ class PluginRunner:
     async def _handle_prepare_shutdown(self, envelope: Envelope) -> Envelope:
         """处理准备关停"""
         logger.debug("收到 prepare_shutdown 信号")
-        await self._dump_inflight_debug("prepare_shutdown")
+        asyncio.get_running_loop().create_task(self._dump_inflight_debug("prepare_shutdown"))
         return envelope.make_response(payload={"acknowledged": True})
 
     async def _handle_shutdown(self, envelope: Envelope) -> Envelope:
         """处理关停 — 调用所有插件的 on_unload 后退出"""
         logger.debug("收到 shutdown 信号，开始调用 on_unload")
-        await self._dump_inflight_debug("shutdown")
+        asyncio.get_running_loop().create_task(self._dump_inflight_debug("shutdown"))
         for plugin_id in list(self._loader.list_plugins()):
             meta = self._loader.get_plugin(plugin_id)
             if meta is not None:

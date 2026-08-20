@@ -23,6 +23,11 @@ display_name = "Replyer"
 advanced = false
 description = "Maisaka の返信生成テンプレート。人格、表現スタイル、グループチャット上の注意点、返信対象の文脈から最終返信を生成する。"
 
+[humanizer]
+display_name = "AI味除去"
+advanced = true
+description = "返信生成時に付加されるAI味除去の執筆ルールテンプレート。四層の自己チェック体系（禁止語彙・スタイル一貫性・内容品質・人間らしさ最終審査）に基づき、返信をより人間らしい話し方に制約する。"
+
 [default_expressor]
 display_name = "既定表現器"
 advanced = true
@@ -137,3 +142,18 @@ description = "ReAct 形式の記憶検索フローで使用する高度な記�
 display_name = "WebUI AI 検索"
 advanced = true
 description = "自然言語の意図に基づき、WebUI が提供する実在のページと設定候補から関連結果を選択します。"
+
+[extract_network_bad_memes]
+display_name = "ネットクソネタ抽出"
+advanced = true
+description = "ネット検索結果や絵文字の説明などのテキストから、最近新しく出てきたネットのクソネタ、悪質なネタ、低俗な黒話などの語句を抽出するテンプレート。"
+
+[judge_bad_image]
+display_name = "違反画像判定"
+advanced = true
+description = "チャット内の画像説明文やスタンプのテキストから、違反コンテンツ（性的・低俗、暴力的・残虐、政治的に敏感）を識別するテンプレート。"
+
+[judge_bad_meme]
+display_name = "クソネタ判定"
+advanced = true
+description = "チャットから抽出された黒話・ネタ候補の中から、クソネタ（低俗・罵倒、性的暗示、差別的・攻撃的な表現）に該当するものを識別するテンプレート。"

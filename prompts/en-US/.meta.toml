@@ -23,6 +23,11 @@ display_name = "Replyer"
 advanced = false
 description = "Maisaka reply generation template that creates the final reply from persona, expression style, chat notes, and reply context."
 
+[humanizer]
+display_name = "Humanizer"
+advanced = true
+description = "De-AI writing rules appended to reply generation, based on a four-layer self-check system (banned words / style consistency / content quality / human-feel final review) to make replies read more like a real person."
+
 [default_expressor]
 display_name = "Default Expressor"
 advanced = true
@@ -137,3 +142,18 @@ description = "Advanced memory retrieval prompt header used by the ReAct-style m
 display_name = "WebUI AI Search"
 advanced = true
 description = "Selects relevant results from real WebUI page and configuration candidates based on natural-language intent."
+
+[extract_network_bad_memes]
+display_name = "Bad Meme Extraction"
+advanced = true
+description = "Extracts recently emerging bad memes, vulgar memes, and low-class jargon from web search results, sticker descriptions, and other text."
+
+[judge_bad_image]
+display_name = "Non-compliant Image Detection"
+advanced = true
+description = "Identifies non-compliant content (pornography/vulgarity, violence/gore, political sensitivity) in image descriptions or sticker text from chats."
+
+[judge_bad_meme]
+display_name = "Bad Meme Judgement"
+advanced = true
+description = "Identifies bad memes (vulgar insults, sexual innuendo, discriminatory or aggressive expressions) among jargon/meme candidates extracted from chats."

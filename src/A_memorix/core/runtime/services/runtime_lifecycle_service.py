@@ -155,8 +155,9 @@ class MemoryRuntimeLifecycleService(KernelServiceBase):
                 matrix_format=graph_format,
                 data_dir=self.data_dir / "graph",
             )
-            if self.graph_store.has_data():
-                self.graph_store.load()
+            # 本地紧急补丁：启动时跳过磁盘快照 load()。下方投影 reconcile 以
+            # reset_leases=True 触发全量重建，必然先 clear() 再用 metadata 重建并
+            # save()，load() 解析 59MB JSON 的瞬时峰值（~430MB）纯属浪费。
             projection_service = self._maintenance_service
             type(projection_service)._reconcile_relation_graph_projection_jobs(
                 projection_service,

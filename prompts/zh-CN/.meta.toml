@@ -23,6 +23,11 @@ display_name = "回复"
 advanced = false
 description = "Maisaka 回复生成模板，负责根据人格、表达风格、群聊注意事项和待回复上下文生成最终回复。"
 
+[humanizer]
+display_name = "去AI味"
+advanced = true
+description = "回复生成时附加的去AI味写作规则模板，基于四层自检体系（禁用词/风格一致性/内容质量/活人感终审）约束回复更像真人说话。"
+
 [default_expressor]
 display_name = "改写器"
 advanced = true
@@ -132,3 +137,18 @@ description = "用于在上下文裁切时，将被移出的聊天记录概括�
 display_name = "WebUI AI 搜索"
 advanced = true
 description = "用于根据自然语言意图从 WebUI 提供的真实页面与配置候选中选择搜索结果。"
+
+[extract_network_bad_memes]
+display_name = "网络烂梗提取"
+advanced = true
+description = "用于从网络搜索结果、表情包描述等文本中提取近期新出现的网络烂梗、恶俗梗、低俗黑话等词条。"
+
+[judge_bad_image]
+display_name = "违规图片识别"
+advanced = true
+description = "用于识别聊天中图片描述或表情包文本中的违规内容（色情低俗、暴力血腥、政治敏感）。"
+
+[judge_bad_meme]
+display_name = "烂梗判定"
+advanced = true
+description = "用于从聊天中提取的黑话/梗候选词条中识别属于烂梗的词条（低俗辱骂、性暗示、歧视攻击等）。"

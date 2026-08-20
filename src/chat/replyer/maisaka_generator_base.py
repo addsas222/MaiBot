@@ -563,6 +563,13 @@ class BaseMaisakaReplyGenerator:
         except Exception:
             system_prompt = "你是一个友好的 AI 助手，请根据聊天记录自然回复。"
 
+        try:
+            humanizer_rules = self._load_prompt("humanizer")
+        except Exception:
+            humanizer_rules = ""
+        if humanizer_rules:
+            system_prompt = f"{system_prompt}\n\n{humanizer_rules}"
+
         return system_prompt
 
     def _build_reply_instruction(self) -> str:
