@@ -438,6 +438,44 @@ def test_webui_memory_profile_evidence_route(client: TestClient, monkeypatch):
     assert response.json()["evidence"][0]["hash"] == "p-1"
 
 
+def test_webui_memory_profile_alias_routes(client: TestClient, monkeypatch):
+    calls = []
+
+    async def fake_profile_admin(*, action: str, **kwargs):
+        calls.append((action, kwargs))
+        return {
+            "success": True,
+            "person_id": kwargs["person_id"],
+            "effective_aliases": kwargs.get("aliases", ["自动别名"]),
+        }
+
+    monkeypatch.setattr(memory_router_module.memory_service, "profile_admin", fake_profile_admin)
+
+    get_response = client.get("/api/webui/memory/profiles/person-1/aliases")
+    put_response = client.put(
+        "/api/webui/memory/profiles/person-1/aliases",
+        json={"aliases": ["新别名", "正式称呼"], "updated_by": "tester", "source": "webui"},
+    )
+    delete_response = client.delete("/api/webui/memory/profiles/person-1/aliases")
+
+    assert get_response.status_code == 200
+    assert put_response.status_code == 200
+    assert delete_response.status_code == 200
+    assert calls == [
+        ("get_aliases", {"person_id": "person-1"}),
+        (
+            "set_aliases",
+            {
+                "person_id": "person-1",
+                "aliases": ["新别名", "正式称呼"],
+                "updated_by": "tester",
+                "source": "webui",
+            },
+        ),
+        ("delete_aliases", {"person_id": "person-1"}),
+    ]
+
+
 def test_webui_memory_profile_evidence_correct_route(client: TestClient, monkeypatch):
     async def fake_profile_admin(*, action: str, **kwargs):
         assert action == "correct_evidence"
@@ -505,8 +543,8 @@ def test_webui_memory_profile_list_enriches_person_name(client: TestClient, monk
     monkeypatch.setattr(memory_router_module.memory_service, "profile_admin", fake_profile_admin)
     monkeypatch.setattr(
         memory_router_module,
-        "_batch_get_person_names",
-        lambda person_ids: {pid: "Alice" for pid in person_ids if pid == "person-1"},
+        "_get_person_name_for_person_id",
+        lambda person_id: {"person-1": "Alice"}.get(person_id, ""),
     )
 
     response = client.get("/api/webui/memory/profiles", params={"limit": 7})
@@ -589,11 +627,7 @@ def test_webui_memory_episode_list_resolves_platform_user_id(client: TestClient,
 
     monkeypatch.setattr(memory_router_module, "resolve_person_id_for_memory", fake_resolve_person_id_for_memory)
     monkeypatch.setattr(memory_router_module.memory_service, "episode_admin", fake_episode_admin)
-    monkeypatch.setattr(
-        memory_router_module,
-        "_batch_get_person_names",
-        lambda person_ids: {pid: "测试人物" for pid in person_ids if pid == "resolved-person-id"},
-    )
+    monkeypatch.setattr(memory_router_module, "_get_person_name_for_person_id", lambda person_id: "测试人物")
 
     response = client.get(
         "/api/webui/memory/episodes",
@@ -639,7 +673,6 @@ def test_webui_memory_timeline_returns_chat_scoped_events(client: TestClient, mo
         "_find_real_chat_session",
         lambda chat_id: SimpleNamespace(
             session_id=chat_id,
-            account_id="bot-1",
             platform="qq",
             group_id="100",
             user_id=None,
@@ -710,7 +743,6 @@ def test_webui_memory_timeline_filters_types_and_limit(client: TestClient, monke
         "_find_real_chat_session",
         lambda chat_id: SimpleNamespace(
             session_id=chat_id,
-            account_id="bot-1",
             platform="qq",
             group_id="100",
             user_id=None,
@@ -764,7 +796,6 @@ def test_webui_memory_timeline_deleted_paragraph_prefers_delete_operation(client
         "_find_real_chat_session",
         lambda chat_id: SimpleNamespace(
             session_id=chat_id,
-            account_id="bot-1",
             platform="qq",
             group_id="100",
             user_id=None,
@@ -795,7 +826,6 @@ def test_webui_memory_timeline_uses_latest_message_snapshot(client: TestClient, 
         "_find_real_chat_session",
         lambda chat_id: SimpleNamespace(
             session_id=chat_id,
-            account_id="bot-1",
             platform="qq",
             group_id=None,
             user_id="user-1",
@@ -850,7 +880,6 @@ def test_webui_memory_timeline_handles_json_bytes_zero_timestamp_and_batches_ite
         "_find_real_chat_session",
         lambda chat_id: SimpleNamespace(
             session_id=chat_id,
-            account_id="bot-1",
             platform="qq",
             group_id="100",
             user_id=None,
