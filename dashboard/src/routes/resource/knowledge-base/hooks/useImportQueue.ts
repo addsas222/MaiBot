@@ -19,20 +19,29 @@ import { memoryProgressClient, type MemoryProgressEvent } from '@/lib/memory-pro
 import { unifiedWsClient } from '@/lib/unified-ws'
 import {
   cancelMemoryImportTask,
+  getMemoryImportOverallProgress,
   getMemoryImportSettings,
   getMemoryImportTask,
   getMemoryImportTaskChunks,
   getMemoryImportTasks,
+  pauseMemoryImportTask,
+  resumeMemoryImportTask,
   retryMemoryImportTask,
   type MemoryImportChunkListPayload,
   type MemoryImportChunkPayload,
   type MemoryImportFilePayload,
+  type MemoryImportOverallProgress,
   type MemoryImportRetrySummary,
   type MemoryImportSettings,
   type MemoryImportTaskPayload,
 } from '@/lib/memory-api'
 
-import { IMPORT_CHUNK_PAGE_SIZE, QUEUED_IMPORT_STATUS, RUNNING_IMPORT_STATUS } from '../constants'
+import {
+  IMPORT_CHUNK_PAGE_SIZE,
+  PAUSABLE_IMPORT_STATUS,
+  QUEUED_IMPORT_STATUS,
+  RUNNING_IMPORT_STATUS,
+} from '../constants'
 
 export interface UseImportQueueOptions {
   /** 导入面板是否激活；非激活时不拉取、不轮询、不订阅 */
@@ -54,6 +63,11 @@ export interface UseImportQueueResult {
   importErrorText: string
   cancelSelectedImportTask: () => Promise<void>
   retrySelectedImportTask: () => Promise<void>
+  pauseSelectedImportTask: () => Promise<void>
+  resumeSelectedImportTask: () => Promise<void>
+  selectedImportTaskPaused: boolean
+  selectedImportTaskPausable: boolean
+  overallImportProgress: MemoryImportOverallProgress | null
   selectedImportTaskLoading: boolean
   selectedImportTaskResolved: MemoryImportTaskPayload | null | undefined
   selectedImportRetrySummary: MemoryImportRetrySummary | null | undefined
@@ -112,9 +126,19 @@ export function useImportQueue({
   })
   const importTasks = useMemo(() => tasksQuery.data?.items ?? [], [tasksQuery.data?.items])
 
+  // 整体进度：与任务列表同一轮询节奏，读失败不阻塞队列渲染（面板隐藏整体进度条即可）
+  const overallProgressQuery = useQuery({
+    queryKey: ['memory-import', 'overall-progress'],
+    queryFn: () => getMemoryImportOverallProgress(),
+    enabled: active,
+    refetchInterval: active && importAutoPolling && !wsConnected ? importPollInterval : false,
+  })
+  const overallImportProgress = overallProgressQuery.data?.overall ?? null
+
   const invalidate = useCallback(() => {
     void tasksQuery.refetch()
-  }, [tasksQuery])
+    void overallProgressQuery.refetch()
+  }, [overallProgressQuery, tasksQuery])
 
   // 队列读失败：局部 importErrorText 呈现（沿用原 refreshImportQueue 的错误文案语义）
   const [importErrorText, setImportErrorText] = useState('')
@@ -340,6 +364,58 @@ export function useImportQueue({
     }
   }, [loadImportTaskDetail, refreshImportQueue, selectedImportTaskId, toast])
 
+  const pauseSelectedImportTask = useCallback(async () => {
+    if (!selectedImportTaskId) {
+      return
+    }
+    try {
+      const payload = await pauseMemoryImportTask(selectedImportTaskId)
+      if (!payload.success) {
+        throw new Error(payload.error || '暂停导入任务失败')
+      }
+      await refreshImportQueue(true)
+      await loadImportTaskDetail(selectedImportTaskId, true)
+      toast({
+        title: '已暂停任务',
+        description: `任务 ${selectedImportTaskId.slice(0, 12)} 已暂停`,
+      })
+    } catch (error) {
+      const message = error instanceof Error ? error.message : '暂停导入任务失败'
+      setImportErrorText(message)
+      toast({
+        title: '暂停导入任务失败',
+        description: message,
+        variant: 'destructive',
+      })
+    }
+  }, [loadImportTaskDetail, refreshImportQueue, selectedImportTaskId, toast])
+
+  const resumeSelectedImportTask = useCallback(async () => {
+    if (!selectedImportTaskId) {
+      return
+    }
+    try {
+      const payload = await resumeMemoryImportTask(selectedImportTaskId)
+      if (!payload.success) {
+        throw new Error(payload.error || '恢复导入任务失败')
+      }
+      await refreshImportQueue(true)
+      await loadImportTaskDetail(selectedImportTaskId, true)
+      toast({
+        title: '已恢复任务',
+        description: `任务 ${selectedImportTaskId.slice(0, 12)} 已继续执行`,
+      })
+    } catch (error) {
+      const message = error instanceof Error ? error.message : '恢复导入任务失败'
+      setImportErrorText(message)
+      toast({
+        title: '恢复导入任务失败',
+        description: message,
+        variant: 'destructive',
+      })
+    }
+  }, [loadImportTaskDetail, refreshImportQueue, selectedImportTaskId, toast])
+
   const retrySelectedImportTask = useCallback(async () => {
     if (!selectedImportTaskId) {
       return
@@ -483,6 +559,10 @@ export function useImportQueue({
   const selectedImportTaskResolved = selectedImportTask ?? selectedImportTaskSummary
   const selectedImportTaskErrorText = String(selectedImportTaskResolved?.error ?? '').trim()
   const selectedImportRetrySummary = selectedImportTaskResolved?.retry_summary
+  const selectedImportTaskPaused = Boolean(selectedImportTaskResolved?.paused)
+  const selectedImportTaskPausable = PAUSABLE_IMPORT_STATUS.has(
+    String(selectedImportTaskResolved?.status ?? '').trim()
+  )
 
   const importChunkTotal = Number(importChunksPayload?.total ?? 0)
   const canImportChunkPrev = importChunkOffset > 0
@@ -501,6 +581,11 @@ export function useImportQueue({
     importErrorText,
     cancelSelectedImportTask,
     retrySelectedImportTask,
+    pauseSelectedImportTask,
+    resumeSelectedImportTask,
+    selectedImportTaskPaused,
+    selectedImportTaskPausable,
+    overallImportProgress,
     selectedImportTaskLoading,
     selectedImportTaskResolved,
     selectedImportRetrySummary,

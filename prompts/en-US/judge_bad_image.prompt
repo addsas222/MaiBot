@@ -1,0 +1,23 @@
+Below are image descriptions or sticker texts from the chat. Identify which ones are non-compliant content.
+
+Definition of "non-compliant content" (any of the following makes it non-compliant):
+- Pornographic or vulgar: nudity, sexual innuendo, sexual provocation, erotic content
+- Violence or gore: blood, dismemberment, violent harm, horror imagery
+- Politically sensitive: sensitive political figures, events, symbols, or improper political expression
+- Ads or scams: marketing solicitation, paid task scams, gambling, fraud, solicitation for sexual services
+- Privacy leakage: personal identity information, documents, account credentials, payment QR codes
+
+The following are NOT non-compliant and should be kept:
+- Normal everyday image descriptions (landscapes, food, pets, anime, game screenshots, everyday selfies, etc.)
+- Normal stickers (funny, cute, everyday emotional expression, internet meme images)
+
+Candidate list:
+{entries}
+
+Output only a JSON array, nothing else. Each element has this format:
+[
+  {{"content": "original text", "is_bad": true, "reason": "judgment reason"}},
+  {{"content": "original text", "is_bad": false, "reason": "judgment reason"}}
+]
+
+Output JSON:

@@ -6,7 +6,8 @@ import asyncio
 import re
 import time
 
-import httpx
+
+from src.common.http_client import get_webui_http_client
 
 
 OFFICIAL_DOCS_BUNDLE_URL = "https://docs.mai-mai.org/llms-full.txt"
@@ -191,9 +192,9 @@ class AISearchDocumentStore:
             now = time.monotonic()
             if self._official_docs_cache is not None and self._official_docs_cache[0] > now:
                 return self._official_docs_cache[1]
-            async with httpx.AsyncClient(follow_redirects=True, timeout=15.0) as client:
-                response = await client.get(OFFICIAL_DOCS_BUNDLE_URL)
-                response.raise_for_status()
+            client = get_webui_http_client()
+            response = await client.get(OFFICIAL_DOCS_BUNDLE_URL, follow_redirects=True, timeout=15.0)
+            response.raise_for_status()
             if len(response.content) > OFFICIAL_DOCS_MAX_BUNDLE_SIZE:
                 raise ValueError("官方文档包大小超出限制")
             documents = self._parse_official_docs_bundle(response.text)

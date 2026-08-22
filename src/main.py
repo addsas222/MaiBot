@@ -271,6 +271,12 @@ async def main() -> None:
         await get_plugin_runtime_manager().bridge_event("on_stop")
         await get_plugin_runtime_manager().stop()
         await async_task_manager.stop_and_wait_all_tasks()
+
+        from src.common.http_client import aclose_main_http_client
+        from src.common.remote import close_shared_session
+
+        await close_shared_session()
+        await aclose_main_http_client()
         await get_mcp_service().close()
         await config_manager.stop_file_watcher()
         set_main_loop(None)

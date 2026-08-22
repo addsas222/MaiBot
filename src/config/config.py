@@ -45,6 +45,7 @@ from .official_configs import (
     PluginRuntimeConfig,
     ResponsePostProcessConfig,
     ResponseSplitterConfig,
+    SkillConfig,
     TelemetryConfig,
     VisualConfig,
     VoiceConfig,
@@ -150,6 +151,9 @@ class Config(ConfigBase):
 
     plugin_runtime: PluginRuntimeConfig = Field(default_factory=PluginRuntimeConfig)
     """插件运行时配置类"""
+
+    skills: SkillConfig = Field(default_factory=SkillConfig)
+    """技能配置类"""
 
 
 class ModelConfig(ConfigBase):

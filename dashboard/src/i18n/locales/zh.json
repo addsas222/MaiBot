@@ -44,10 +44,12 @@
       "personInfo": "人物信息管理",
       "knowledgeGraph": "长期记忆图谱",
       "knowledgeBase": "长期记忆",
+      "skills": "技能",
       "pluginMarket": "插件市场",
       "configTemplate": "配置模板市场",
       "pluginConfig": "插件管理",
       "adapterManagement": "适配器管理",
+      "pluginWebuiPages": "插件页面",
       "mcpSettings": "MCP 设置",
       "dataTransfer": "数据管理",
       "statistics": "详细统计数据",
@@ -57,7 +59,8 @@
       "maisakaMonitor": "麦麦观察",
       "chatManagement": "聊天管理",
       "localChat": "本地聊天室",
-      "settings": "WEBUI设置"
+      "settings": "WEBUI设置",
+      "externalApps": "外部应用"
     }
   },
   "statisticsPage": {

@@ -520,6 +520,8 @@ export interface MemoryImportTaskPayload extends MemoryTaskPayload {
   retry_summary?: MemoryImportRetrySummary
   cancel_requested_at?: number | null
   cancel_origin?: MemoryImportCancelOrigin | ''
+  /** 任务是否处于暂停态；暂停时状态仍保持活跃态（queued/preparing/... ） */
+  paused?: boolean
   params?: Record<string, unknown>
   files?: MemoryImportFilePayload[]
 }
@@ -551,6 +553,21 @@ export interface MemoryImportChunkListPayload {
 export interface MemoryImportActionPayload {
   success: boolean
   task?: MemoryImportTaskPayload
+  error?: string
+}
+
+export interface MemoryImportOverallProgress {
+  total_tasks: number
+  active_tasks: number
+  completed_tasks: number
+  failed_tasks: number
+  /** 按任务权重汇总的整体进度，取值 0..1 */
+  weighted_progress: number
+}
+
+export interface MemoryImportOverallProgressPayload {
+  success: boolean
+  overall?: MemoryImportOverallProgress
   error?: string
 }
 
@@ -1884,6 +1901,28 @@ export async function cancelMemoryImportTask(taskId: string): Promise<MemoryImpo
       method: 'POST',
     }
   )
+}
+
+export async function pauseMemoryImportTask(taskId: string): Promise<MemoryImportActionPayload> {
+  return requestJson<MemoryImportActionPayload>(
+    `/import/tasks/${encodeURIComponent(taskId)}/pause`,
+    {
+      method: 'POST',
+    }
+  )
+}
+
+export async function resumeMemoryImportTask(taskId: string): Promise<MemoryImportActionPayload> {
+  return requestJson<MemoryImportActionPayload>(
+    `/import/tasks/${encodeURIComponent(taskId)}/resume`,
+    {
+      method: 'POST',
+    }
+  )
+}
+
+export async function getMemoryImportOverallProgress(): Promise<MemoryImportOverallProgressPayload> {
+  return requestJson<MemoryImportOverallProgressPayload>('/import/progress/overall')
 }
 
 export async function retryMemoryImportTask(

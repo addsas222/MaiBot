@@ -10,13 +10,36 @@ export const MEMORY_CORRECTION_FETCH_LIMIT = 100
 export const MEMORY_CORRECTION_PAGE_SIZE = 6
 export const IMPORT_CHUNK_PAGE_SIZE = 50
 
-export const RUNNING_IMPORT_STATUS = new Set(['preparing', 'running', 'cancel_requested'])
+export const RUNNING_IMPORT_STATUS = new Set([
+  'preparing',
+  'running',
+  'splitting',
+  'extracting',
+  'writing',
+  'saving',
+  'cancel_requested',
+])
 export const QUEUED_IMPORT_STATUS = new Set(['queued'])
+
+/** 支持暂停/恢复的活跃状态，与后端导入任务活跃态定义对齐（不含取消中） */
+export const PAUSABLE_IMPORT_STATUS = new Set([
+  'queued',
+  'preparing',
+  'running',
+  'splitting',
+  'extracting',
+  'writing',
+  'saving',
+])
 
 export const IMPORT_STATUS_TEXT: Record<string, string> = {
   queued: '排队中',
   preparing: '准备中',
   running: '运行中',
+  splitting: '分块中',
+  extracting: '抽取中',
+  writing: '写入中',
+  saving: '保存中',
   cancel_requested: '取消中',
   cancelled: '已取消',
   completed: '已完成',

@@ -66,6 +66,8 @@ from src.maisaka.turn_scheduler import MessageTurnScheduler
 from src.mcp_module.provider import MCPToolProvider
 from src.mcp_module.service import get_mcp_service
 from src.plugin_runtime.tool_provider import PluginToolProvider
+from src.skills.manager import get_skill_manager
+from src.skills.provider import SkillToolProvider
 from src.services.message_word_frequency_service import update_high_frequency_terms_from_context_messages
 
 from .chat_loop_service import ChatResponse, MaisakaChatLoopService
@@ -1377,6 +1379,7 @@ class MaisakaHeartFlowChatting(MaisakaFocusRuntimeMixin, MaisakaRuntimeDisplayMi
         )
         self._tool_registry.register_provider(PluginToolProvider())
         self._tool_registry.register_provider(MCPToolProvider(get_mcp_service()))
+        self._tool_registry.register_provider(SkillToolProvider(get_skill_manager()))
         self._chat_loop_service.set_tool_registry(self._tool_registry)
 
     async def run_sub_agent(

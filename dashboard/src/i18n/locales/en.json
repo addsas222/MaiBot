@@ -44,10 +44,12 @@
       "personInfo": "Person Info",
       "knowledgeGraph": "Long-Term Memory Graph",
       "knowledgeBase": "Long-Term Memory",
+      "skills": "Skills",
       "pluginMarket": "Plugin Market",
       "configTemplate": "Config Templates",
       "pluginConfig": "Plugin Management",
       "adapterManagement": "Adapter Management",
+      "pluginWebuiPages": "Plugin Pages",
       "mcpSettings": "MCP Settings",
       "dataTransfer": "Data Management",
       "statistics": "Detailed Statistics",
@@ -57,7 +59,8 @@
       "maisakaMonitor": "MaiSaka Chat Monitor",
       "chatManagement": "Chat Management",
       "localChat": "Local Chat",
-      "settings": "WebUI Settings"
+      "settings": "WebUI Settings",
+      "externalApps": "External Apps"
     }
   },
   "statisticsPage": {

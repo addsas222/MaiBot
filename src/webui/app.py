@@ -23,7 +23,6 @@ from src.webui.version_compatibility import (
 logger = get_logger("webui.app")
 
 _DASHBOARD_PACKAGE_NAME = "maibot-dashboard"
-_LOCAL_DASHBOARD_ENV = "MAIBOT_WEBUI_USE_LOCAL_DASHBOARD"
 _STATISTICS_REPORT_PATH_ENV = "MAIBOT_STATISTICS_REPORT_PATH"
 _DEFAULT_STATISTICS_REPORT_PATH = "maibot_statistics.html"
 _MANUAL_INSTALL_COMMAND = f"pip install {_DASHBOARD_PACKAGE_NAME}"
@@ -53,10 +52,6 @@ def _resolve_statistics_report_path() -> Path:
         return report_path.resolve()
 
     return (_get_project_root() / report_path).resolve()
-
-
-def _is_local_dashboard_enabled() -> bool:
-    return getenv(_LOCAL_DASHBOARD_ENV, "").strip().lower() in {"1", "true", "yes", "on"}
 
 
 def _validate_static_path(static_path: Path | None) -> Tuple[str, Dict[str, Any]] | None:
@@ -105,6 +100,14 @@ def create_app(
     _setup_cors(app, port)
     _register_api_routes(app)
     _setup_robots_txt(app)
+    # OpenAI 兼容网关挂载在应用根路径（/v1），供 SillyTavern / Agnai 等外部前端接入
+    from src.webui.routers.openai_gateway import router as openai_gateway_router
+
+    app.include_router(openai_gateway_router)
+    # SillyTavern 数据导入（角色卡/世界书）
+    from src.webui.routers.st_import import router as st_import_router
+
+    app.include_router(st_import_router)
 
     if enable_static:
         _setup_static_files(app)
@@ -272,10 +275,11 @@ def _log_webui_version_compatibility(static_path: Path) -> None:
 
 
 def _resolve_static_path() -> Path | None:
-    if _is_local_dashboard_enabled():
-        static_path = _get_project_root() / "dashboard" / "dist"
-        if static_path.is_dir() and (static_path / "index.html").exists():
-            return static_path
+    # 优先加载仓库内最新构建的前端（dashboard/dist 仅在本地构建后存在，
+    # 未构建环境自然回落到 pip 安装的正式版面板，行为不变）。
+    static_path = _get_project_root() / "dashboard" / "dist"
+    if static_path.is_dir() and (static_path / "index.html").exists():
+        return static_path
 
     try:
         module = import_module("maibot_dashboard")

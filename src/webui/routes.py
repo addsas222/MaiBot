@@ -19,6 +19,7 @@ from src.webui.routers.bot_accounts import router as bot_accounts_router
 from src.webui.routers.config import router as config_router
 from src.webui.routers.data_transfer import router as data_transfer_router
 from src.webui.routers.emoji import router as emoji_router
+from src.webui.routers.external_apps import router as external_apps_router
 from src.webui.routers.expression import router as expression_router
 from src.webui.routers.jargon import router as jargon_router
 from src.webui.routers.memory import router as memory_router
@@ -29,6 +30,7 @@ from src.webui.routers.plugin import router as plugin_router
 from src.webui.routers.reasoning_process import router as reasoning_process_router
 from src.webui.routers.reply_effects import router as reply_effects_router
 from src.webui.routers.search import router as search_router
+from src.webui.routers.skills import router as skills_router
 from src.webui.routers.statistics import router as statistics_router
 from src.webui.routers.system import router as system_router
 from src.webui.routers.user_emoji import router as user_emoji_router
@@ -63,12 +65,16 @@ router.include_router(avatar_router)
 router.include_router(user_emoji_router)
 # 注册插件管理路由
 router.include_router(plugin_router)
+# 注册外部应用管理路由
+router.include_router(external_apps_router)
 # 注册系统控制路由
 router.include_router(system_router)
 router.include_router(data_transfer_router)
 router.include_router(reasoning_process_router)
 router.include_router(reply_effects_router)
 router.include_router(search_router)
+# 注册技能管理路由
+router.include_router(skills_router)
 # 注册模型列表获取路由
 router.include_router(model_router)
 # 注册长期记忆管理路由

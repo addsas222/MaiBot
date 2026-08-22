@@ -1,0 +1,29 @@
+Below is a list of jargon/meme candidates extracted from chat. Identify which ones are "bad memes" (烂梗).
+
+A "bad meme" meets ANY of the following criteria:
+- Vulgar, insulting, malicious curses, or personal attack expressions (e.g., derogatory nicknames, slang variants of profanity, curse words)
+- Sexual innuendo or sexual insult expressions
+- Discriminatory or aggressive expressions
+- Meaningless, hollow viral memes, or overused/played-out spam memes
+- Malicious meme usage intended to belittle or harm others
+
+Recent bad-meme references (match or similar expressions should be judged as bad memes):
+- Profanity homophone/tongjia variants: 冯 (妈/mom), 福 (逼/vulgar), 坤 (鸡/chicken, vulgar), 糖 (mockery of Down syndrome), 法 (fuck), e.g. "冯冯给我转点米" "你糖的没边了" "藻称冯了个福"
+- Sexually suggestive numeric codes: 78, 91, 13 etc.
+- Meaningless spam catchphrases: "那咋了" "受着呗" "包的" "xxx是gay" "谁动谁是gay"
+- Discriminatory/insulting terms: "烧杯" (insult toward women), "大雷" (female chest), "格调" (homophone for male genitalia)
+
+The following should NOT be treated as bad memes and should be kept:
+- Ordinary jargon, abbreviations, or group-specific agreed-upon terms
+- Neutral, friendly, humorous catchphrases or verbal tics
+
+Candidate list:
+{entries}
+
+Output ONLY a JSON array with no other content. Each element has the following format:
+[
+  {{"content": "original term", "is_bad_meme": true, "reason": "judgment reason"}},
+  {{"content": "original term", "is_bad_meme": false, "reason": "judgment reason"}}
+]
+
+Output JSON:

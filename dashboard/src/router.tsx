@@ -292,6 +292,52 @@ const pluginMirrorsEmbedRoute = createRoute({
   ),
 })
 
+// 插件页面路由 - 插件自带 WebUI 页面索引
+const pluginWebuiPagesRoute = createRoute({
+  getParentRoute: () => protectedRoute,
+  path: '/plugin-pages',
+  component: lazyRouteComponent(
+    () => import('./routes/plugin-pages/index.tsx'),
+    'PluginWebuiPagesIndexPage'
+  ),
+})
+
+// 插件页面路由 - 单个插件的 WebUI 页面（iframe 嵌入）
+export const pluginWebuiPageRoute = createRoute({
+  getParentRoute: () => protectedRoute,
+  path: '/plugin-pages/$pluginId',
+  component: lazyRouteComponent(
+    () => import('./routes/plugin-pages/plugin-page.tsx'),
+    'PluginWebuiPage'
+  ),
+})
+
+// 技能管理路由
+const skillsRoute = createRoute({
+  getParentRoute: () => protectedRoute,
+  path: '/skills',
+  component: lazyRouteComponent(() => import('./routes/skills'), 'SkillsPage'),
+})
+
+// 外部应用路由 - SillyTavern / Agnai 管理与嵌入
+export const externalAppsIndexRoute = createRoute({
+  getParentRoute: () => protectedRoute,
+  path: '/external-apps',
+  component: lazyRouteComponent(
+    () => import('./routes/external-apps/index'),
+    'ExternalAppsIndexPage'
+  ),
+})
+
+export const externalAppPageRoute = createRoute({
+  getParentRoute: () => protectedRoute,
+  path: '/external-apps/$appId',
+  component: lazyRouteComponent(
+    () => import('./routes/external-apps/app'),
+    'ExternalAppPage'
+  ),
+})
+
 // 插件镜像源配置路由
 const pluginMirrorsRoute = createRoute({
   getParentRoute: () => protectedRoute,
@@ -389,6 +435,11 @@ const routeTree = rootRoute.addChildren([
     modelPresetsRoute,
     pluginConfigRoute,
     adapterManagementRoute,
+    pluginWebuiPagesRoute,
+    pluginWebuiPageRoute,
+    skillsRoute,
+    externalAppsIndexRoute,
+    externalAppPageRoute,
     pluginMirrorsRoute,
     mcpSettingsRoute,
     dataTransferRoute,

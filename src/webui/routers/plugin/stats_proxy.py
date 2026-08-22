@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field, model_validator
 
+from src.common.http_client import get_webui_http_client
 from src.common.logger import get_logger
 from src.webui.dependencies import require_auth
 
@@ -47,8 +48,8 @@ class DownloadRequest(BaseModel):
 async def _request_stats_service(method: str, path: str, payload: Dict[str, Any] | None = None) -> JSONResponse:
     url = f"{PLUGIN_STATS_BASE_URL}{path}"
     try:
-        async with httpx.AsyncClient(timeout=PLUGIN_STATS_TIMEOUT) as client:
-            response = await client.request(method, url, json=payload)
+        client = get_webui_http_client()
+        response = await client.request(method, url, json=payload, timeout=PLUGIN_STATS_TIMEOUT)
     except httpx.HTTPError as exc:
         logger.warning(f"插件统计服务请求失败: {url} - {type(exc).__name__}: {exc!r}")
         raise HTTPException(status_code=502, detail="插件统计服务暂不可用") from exc

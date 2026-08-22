@@ -30,6 +30,27 @@ async def get_tcp_connector():
     return aiohttp.TCPConnector(ssl=_ssl_context)
 
 
+_shared_session: aiohttp.ClientSession | None = None
+
+
+async def get_shared_session() -> aiohttp.ClientSession:
+    """获取进程内共享的遥测会话，避免每次请求都新建连接池"""
+    global _shared_session
+
+    if _shared_session is None or _shared_session.closed:
+        _shared_session = aiohttp.ClientSession(connector=await get_tcp_connector())
+    return _shared_session
+
+
+async def close_shared_session() -> None:
+    """关闭共享遥测会话（需在主事件循环退出前调用）"""
+    global _shared_session
+
+    if _shared_session is not None and not _shared_session.closed:
+        await _shared_session.close()
+    _shared_session = None
+
+
 class TelemetryHeartBeatTask(AsyncTask):
     HEARTBEAT_INTERVAL = 600
 
@@ -80,31 +101,31 @@ class TelemetryHeartBeatTask(AsyncTask):
             logger.info("正在向遥测服务端请求UUID...")
 
             try:
-                async with aiohttp.ClientSession(connector=await get_tcp_connector()) as session:
-                    async with session.post(
-                        f"{TELEMETRY_SERVER_URL}/stat/reg_client",
-                        json={"deploy_time": local_storage["deploy_time"]},
-                        timeout=aiohttp.ClientTimeout(total=5),  # 设置超时时间为5秒
-                    ) as response:
-                        logger.debug(f"{TELEMETRY_SERVER_URL}/stat/reg_client")
-                        logger.debug(local_storage["deploy_time"])  # type: ignore
-                        logger.debug(f"Response status: {response.status}")
+                session = await get_shared_session()
+                async with session.post(
+                    f"{TELEMETRY_SERVER_URL}/stat/reg_client",
+                    json={"deploy_time": local_storage["deploy_time"]},
+                    timeout=aiohttp.ClientTimeout(total=5),  # 设置超时时间为5秒
+                ) as response:
+                    logger.debug(f"{TELEMETRY_SERVER_URL}/stat/reg_client")
+                    logger.debug(local_storage["deploy_time"])  # type: ignore
+                    logger.debug(f"Response status: {response.status}")
 
-                        if response.status == 200:
-                            data = await response.json()
-                            if client_id := data.get("mmc_uuid"):
-                                # 将UUID存储到本地
-                                local_storage["mmc_uuid"] = client_id
-                                self.client_uuid = client_id
-                                logger.info(f"成功获取UUID: {self.client_uuid}")
-                                return True  # 成功获取UUID，返回True
-                            else:
-                                logger.error("无效的服务端响应")
+                    if response.status == 200:
+                        data = await response.json()
+                        if client_id := data.get("mmc_uuid"):
+                            # 将UUID存储到本地
+                            local_storage["mmc_uuid"] = client_id
+                            self.client_uuid = client_id
+                            logger.info(f"成功获取UUID: {self.client_uuid}")
+                            return True  # 成功获取UUID，返回True
                         else:
-                            response_text = await response.text()
-                            logger.error(
-                                f"请求UUID失败，不过你还是可以正常使用麦麦，状态码: {response.status}, 响应内容: {response_text}"
-                            )
+                            logger.error("无效的服务端响应")
+                    else:
+                        response_text = await response.text()
+                        logger.error(
+                            f"请求UUID失败，不过你还是可以正常使用麦麦，状态码: {response.status}, 响应内容: {response_text}"
+                        )
             except Exception as e:
                 import traceback
 
@@ -136,33 +157,33 @@ class TelemetryHeartBeatTask(AsyncTask):
         logger.debug(str(headers))
 
         try:
-            async with aiohttp.ClientSession(connector=await get_tcp_connector()) as session:
-                async with session.post(
-                    f"{self.server_url}/stat/client_heartbeat",
-                    headers=headers,
-                    json=self.info_dict,
-                    timeout=aiohttp.ClientTimeout(total=5),  # 设置超时时间为5秒
-                ) as response:
-                    logger.debug(f"Response status: {response.status}")
+            session = await get_shared_session()
+            async with session.post(
+                f"{self.server_url}/stat/client_heartbeat",
+                headers=headers,
+                json=self.info_dict,
+                timeout=aiohttp.ClientTimeout(total=5),  # 设置超时时间为5秒
+            ) as response:
+                logger.debug(f"Response status: {response.status}")
 
-                    # 处理响应
-                    if 200 <= response.status < 300:
-                        # 成功
-                        logger.debug(f"心跳发送成功，状态码: {response.status}")
-                    elif response.status == 403:
-                        # 403 Forbidden
-                        logger.warning(
-                            "（此消息不会影响正常使用）心跳发送失败，403 Forbidden: 可能是UUID无效或未注册。"
-                            "处理措施：重置UUID，下次发送心跳时将尝试重新注册。"
-                        )
-                        self.client_uuid = None
-                        del local_storage["mmc_uuid"]  # 删除本地存储的UUID
-                    else:
-                        # 其他错误
-                        response_text = await response.text()
-                        logger.warning(
-                            f"（此消息不会影响正常使用）状态未发送，状态码: {response.status}, 响应内容: {response_text}"
-                        )
+                # 处理响应
+                if 200 <= response.status < 300:
+                    # 成功
+                    logger.debug(f"心跳发送成功，状态码: {response.status}")
+                elif response.status == 403:
+                    # 403 Forbidden
+                    logger.warning(
+                        "（此消息不会影响正常使用）心跳发送失败，403 Forbidden: 可能是UUID无效或未注册。"
+                        "处理措施：重置UUID，下次发送心跳时将尝试重新注册。"
+                    )
+                    self.client_uuid = None
+                    del local_storage["mmc_uuid"]  # 删除本地存储的UUID
+                else:
+                    # 其他错误
+                    response_text = await response.text()
+                    logger.warning(
+                        f"（此消息不会影响正常使用）状态未发送，状态码: {response.status}, 响应内容: {response_text}"
+                    )
         except Exception as e:
             import traceback
 
@@ -241,27 +262,27 @@ class TelemetryStatsUploadTask(AsyncTask):
             if delay_seconds:
                 await asyncio.sleep(delay_seconds)
             try:
-                async with aiohttp.ClientSession(connector=await get_tcp_connector()) as session:
-                    async with session.post(
-                        f"{self.server_url}/stat/client_statistics",
-                        headers=headers,
-                        json=payload,
-                        timeout=aiohttp.ClientTimeout(total=15),
-                    ) as response:
-                        if 200 <= response.status < 300:
-                            logger.debug(f"遥测统计上传成功，状态码: {response.status}")
-                            return True
-                        if response.status == 403:
-                            logger.warning("遥测统计上传失败，UUID 可能无效，将在下次重新注册")
-                            self.client_uuid = None
-                            if "mmc_uuid" in local_storage:
-                                del local_storage["mmc_uuid"]
-                            return False
-                        response_text = await response.text()
-                        logger.warning(
-                            f"遥测统计上传失败: attempt={attempt_index}, status={response.status}, "
-                            f"response={response_text}"
-                        )
+                session = await get_shared_session()
+                async with session.post(
+                    f"{self.server_url}/stat/client_statistics",
+                    headers=headers,
+                    json=payload,
+                    timeout=aiohttp.ClientTimeout(total=15),
+                ) as response:
+                    if 200 <= response.status < 300:
+                        logger.debug(f"遥测统计上传成功，状态码: {response.status}")
+                        return True
+                    if response.status == 403:
+                        logger.warning("遥测统计上传失败，UUID 可能无效，将在下次重新注册")
+                        self.client_uuid = None
+                        if "mmc_uuid" in local_storage:
+                            del local_storage["mmc_uuid"]
+                        return False
+                    response_text = await response.text()
+                    logger.warning(
+                        f"遥测统计上传失败: attempt={attempt_index}, status={response.status}, "
+                        f"response={response_text}"
+                    )
             except Exception as exc:
                 logger.warning(f"遥测统计上传异常: attempt={attempt_index}, error={type(exc).__name__}: {exc}")
         return False

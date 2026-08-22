@@ -12,6 +12,7 @@ import subprocess
 
 import httpx
 
+from src.common.http_client import get_webui_http_client
 from src.common.logger import get_logger
 from src.webui.utils.network_security import validate_public_url
 
@@ -530,18 +531,18 @@ class GitMirrorService:
             attempts += 1
             try:
                 logger.debug(f"尝试 #{attempt + 1}: {url}")
-                async with httpx.AsyncClient(timeout=self.timeout) as client:
-                    response = await client.get(url)
-                    response.raise_for_status()
+                client = get_webui_http_client()
+                response = await client.get(url, timeout=self.timeout)
+                response.raise_for_status()
 
-                    logger.info(f"成功获取文件: {url}")
-                    return {
-                        "success": True,
-                        "data": response.text,
-                        "mirror_used": mirror_type,
-                        "attempts": attempts,
-                        "url": url,
-                    }
+                logger.info(f"成功获取文件: {url}")
+                return {
+                    "success": True,
+                    "data": response.text,
+                    "mirror_used": mirror_type,
+                    "attempts": attempts,
+                    "url": url,
+                }
             except httpx.HTTPStatusError as e:
                 last_error = f"HTTP {e.response.status_code}: {e}"
                 logger.warning(f"HTTP 错误 (尝试 {attempt + 1}/{self.max_retries}): {last_error}")

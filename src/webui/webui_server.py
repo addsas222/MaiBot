@@ -277,6 +277,10 @@ class ThreadedWebUIServer:
                     task.cancel()
                 if pending_tasks:
                     loop.run_until_complete(asyncio.gather(*pending_tasks, return_exceptions=True))
+
+                from src.common.http_client import aclose_webui_http_client
+
+                loop.run_until_complete(aclose_webui_http_client())
                 loop.run_until_complete(loop.shutdown_asyncgens())
             except Exception as exc:
                 logger.debug(f"清理 WebUI 线程事件循环时出现异常: {exc}")

@@ -1,0 +1,18 @@
+Below is text content related to "bad memes / jargon / vulgar memes" (including web search results, emoji descriptions, etc.).
+
+Extract recently emerging bad memes, vulgar memes, and low-class jargon terms from it.
+
+Extraction rules:
+- Only extract terms that qualify as "bad memes": vulgar, insulting, sexually suggestive, discriminatory/aggressive, meaningless spam catchphrases, malicious meme usage
+- Exclude ordinary catchphrases, neutral expressions, and group-specific jargon
+- Terms should be short phrases or words (preferably 2~8 characters); do not output whole sentences
+- Deduplicate identical terms
+- If no extractable terms exist in the content, output an empty array
+
+Text content:
+{search_results}
+
+Output ONLY a JSON string array with no other content:
+["term1", "term2"]
+
+Output JSON:

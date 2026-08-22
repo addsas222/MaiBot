@@ -61,6 +61,13 @@ class MemoryImportTuningAdminService(KernelServiceBase):
         if act == "cancel":
             task = await manager.cancel_task(str(kwargs.get("task_id", "") or ""))
             return {"success": task is not None, "task": task, "error": "" if task is not None else "任务不存在"}
+        # NOTE(upstream): 本地补丁（暂停/恢复/看门狗），待同步上游 MaiBot_branch
+        if act == "pause":
+            task = await manager.pause_task(str(kwargs.get("task_id", "") or ""))
+            return {"success": task is not None, "task": task, "error": "" if task is not None else "任务不存在"}
+        if act == "resume":
+            task = await manager.resume_task(str(kwargs.get("task_id", "") or ""))
+            return {"success": task is not None, "task": task, "error": "" if task is not None else "任务不存在"}
         if act == "retry_failed":
             overrides = kwargs.get("overrides") if isinstance(kwargs.get("overrides"), dict) else kwargs
             task = await manager.retry_failed(str(kwargs.get("task_id", "") or ""), overrides=overrides)

@@ -6046,3 +6046,46 @@ class PluginRuntimeConfig(ConfigBase):
         },
     )
     """插件需要网页截图或渲染时使用的浏览器配置。"""
+
+
+class SkillConfig(ConfigBase):
+    """技能（Skills）配置类"""
+
+    directories: list[str] = Field(
+        default_factory=lambda: ["data/skills"],
+        json_schema_extra={
+            "label": {
+                "zh_CN": "技能目录",
+                "en_US": "Skill directories",
+                "ja_JP": "スキルディレクトリ",
+            },
+            "x-widget": "custom",
+        },
+    )
+    """技能根目录列表；相对路径基于项目根目录解析，每个子目录内含一份 SKILL.md。"""
+
+    disabled_skills: list[str] = Field(
+        default_factory=lambda: [],
+        json_schema_extra={
+            "label": {
+                "zh_CN": "禁用的技能",
+                "en_US": "Disabled skills",
+                "ja_JP": "無効化されたスキル",
+            },
+            "x-widget": "custom",
+        },
+    )
+    """被禁用的技能名列表；名单内的技能不会暴露为模型工具。"""
+
+    max_content_length: int = Field(
+        default=16000,
+        json_schema_extra={
+            "label": {
+                "zh_CN": "技能内容载入上限",
+                "en_US": "Max skill content length",
+                "ja_JP": "スキル内容の読み込み上限",
+            },
+            "x-widget": "input",
+        },
+    )
+    """单次回填模型上下文的技能内容字符上限。"""

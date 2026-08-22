@@ -136,6 +136,11 @@ export function ImportTab({ queue, form }: ImportTabProps) {
     importErrorText,
     cancelSelectedImportTask,
     retrySelectedImportTask,
+    pauseSelectedImportTask,
+    resumeSelectedImportTask,
+    selectedImportTaskPaused,
+    selectedImportTaskPausable,
+    overallImportProgress,
     selectedImportTaskLoading,
     selectedImportTaskResolved,
     selectedImportRetrySummary,
@@ -938,6 +943,24 @@ export function ImportTab({ queue, form }: ImportTabProps) {
                   自动轮询 {importPollInterval}ms
                 </label>
               </div>
+              {overallImportProgress ? (
+                <div className="space-y-1.5 rounded-xl border bg-muted/20 p-3">
+                  <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+                    <span className="font-medium">整体进度</span>
+                    <span className="text-muted-foreground">
+                      {formatProgressPercent(overallImportProgress.weighted_progress)}
+                    </span>
+                  </div>
+                  <Progress
+                    value={normalizeProgress(overallImportProgress.weighted_progress)}
+                    className="h-1.5"
+                  />
+                  <div className="text-xs text-muted-foreground">
+                    进行中 {overallImportProgress.active_tasks} · 已完成 {overallImportProgress.completed_tasks} · 失败{' '}
+                    {overallImportProgress.failed_tasks} · 共 {overallImportProgress.total_tasks}
+                  </div>
+                </div>
+              ) : null}
             </CardHeader>
             <CardContent className="space-y-6">
               {importErrorText ? (
@@ -975,9 +998,12 @@ export function ImportTab({ queue, form }: ImportTabProps) {
                                 </div>
                                 <div className="text-sm font-medium">{String(task.task_kind ?? task.mode ?? '-')}</div>
                               </div>
-                              <Badge variant={getImportStatusVariant(String(task.status ?? ''))}>
-                                {getImportStatusLabel(String(task.status ?? ''))}
-                              </Badge>
+                              <div className="flex flex-wrap items-center gap-1.5">
+                                {task.paused ? <Badge variant="secondary">已暂停</Badge> : null}
+                                <Badge variant={getImportStatusVariant(String(task.status ?? ''))}>
+                                  {getImportStatusLabel(String(task.status ?? ''))}
+                                </Badge>
+                              </div>
                             </div>
                             <div className="mt-2 flex items-center justify-between gap-2 text-xs text-muted-foreground">
                               <span>{getImportStepLabel(String(task.current_step ?? 'running'))}</span>
@@ -1098,6 +1124,27 @@ export function ImportTab({ queue, form }: ImportTabProps) {
             <div className="flex flex-wrap items-center justify-between gap-2">
               <CardTitle>任务详情</CardTitle>
               <div className="flex flex-wrap gap-2">
+                {selectedImportTaskPaused ? (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    aria-label="恢复选中导入任务"
+                    onClick={() => void resumeSelectedImportTask()}
+                    disabled={!selectedImportTaskId}
+                  >
+                    恢复任务
+                  </Button>
+                ) : selectedImportTaskPausable ? (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    aria-label="暂停选中导入任务"
+                    onClick={() => void pauseSelectedImportTask()}
+                    disabled={!selectedImportTaskId}
+                  >
+                    暂停任务
+                  </Button>
+                ) : null}
                 <Button
                   size="sm"
                   variant="outline"
@@ -1163,6 +1210,7 @@ export function ImportTab({ queue, form }: ImportTabProps) {
                               <Badge variant={getImportStatusVariant(String(selectedImportTaskResolved.status ?? ''))}>
                                 {getImportStatusLabel(String(selectedImportTaskResolved.status ?? ''))}
                               </Badge>
+                              {selectedImportTaskPaused ? <Badge variant="secondary">已暂停</Badge> : null}
                               <span className="text-xs text-muted-foreground">
                                 {getImportStepLabel(String(selectedImportTaskResolved.current_step ?? ''))}
                               </span>
@@ -1240,7 +1288,9 @@ export function ImportTab({ queue, form }: ImportTabProps) {
 
                 {selectedImportTaskErrorText ? (
                   <Alert variant="destructive">
-                    <AlertDescription>{selectedImportTaskErrorText}</AlertDescription>
+                    <AlertDescription className="break-words whitespace-pre-wrap">
+                      {selectedImportTaskErrorText}
+                    </AlertDescription>
                   </Alert>
                 ) : null}
 

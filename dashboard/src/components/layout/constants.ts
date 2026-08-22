@@ -1,6 +1,8 @@
 import { createElement } from 'react'
 import {
   Activity,
+  AppWindow,
+  BookOpen,
   Box,
   Brain,
   Database,
@@ -9,13 +11,13 @@ import {
   Hash,
   Home,
   MessageSquare,
+  Plug,
   Puzzle,
   Settings,
   Smile,
   Store,
   Wifi,
 } from 'lucide-react'
-
 import { createStreamlineIcon } from '@/components/ui/streamline-menu-icon'
 
 import type { MenuIcon, MenuSection } from './types'
@@ -37,6 +39,9 @@ const PluginMarketIcon = createStreamlineIcon('store-2-solid', Store)
 const McpIcon = createStreamlineIcon('router-wifi-network-solid', Wifi)
 const DataTransferIcon: MenuIcon = (props) => createElement(HardDrive, props)
 const ReplyEffectsIcon: MenuIcon = (props) => createElement(Activity, props)
+const SkillsIcon: MenuIcon = (props) => createElement(BookOpen, props)
+const PluginWebuiPagesIcon: MenuIcon = (props) => createElement(AppWindow, props)
+const ExternalAppsIcon: MenuIcon = (props) => createElement(Plug, props)
 
 export const menuSections: MenuSection[] = [
   {
@@ -108,6 +113,11 @@ export const menuSections: MenuSection[] = [
         label: 'sidebar.menu.knowledgeBase',
         path: '/resource/knowledge-base',
       },
+      {
+        icon: SkillsIcon,
+        label: 'sidebar.menu.skills',
+        path: '/skills',
+      },
     ],
   },
   {
@@ -120,6 +130,12 @@ export const menuSections: MenuSection[] = [
         path: '/plugins',
         searchDescription: 'search.items.pluginsDesc',
       },
+      {
+        icon: PluginWebuiPagesIcon,
+        label: 'sidebar.menu.pluginWebuiPages',
+        path: '/plugin-pages',
+      },
+      { icon: ExternalAppsIcon, label: 'sidebar.menu.externalApps', path: '/external-apps' },
       { icon: McpIcon, label: 'sidebar.menu.mcpSettings', path: '/mcp-settings' },
     ],
   },

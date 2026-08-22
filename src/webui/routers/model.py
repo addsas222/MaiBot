@@ -14,6 +14,7 @@ import time
 import httpx
 import tomlkit
 
+from src.common.http_client import get_webui_http_client
 from src.common.logger import get_logger
 from src.config.config import CONFIG_DIR
 from src.config.model_configs import APIProvider, TaskConfig
@@ -297,10 +298,10 @@ async def _fetch_models_from_provider(
             headers["Authorization"] = f"Bearer {client_config.api_key}"
 
     try:
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            response = await client.get(url, headers=headers, params=params)
-            response.raise_for_status()
-            data = response.json()
+        client = get_webui_http_client()
+        response = await client.get(url, headers=headers, params=params)
+        response.raise_for_status()
+        data = response.json()
     except httpx.TimeoutException as e:
         raise HTTPException(status_code=504, detail="请求超时，请稍后重试") from e
     except httpx.HTTPStatusError as e:
@@ -670,14 +671,14 @@ async def _test_provider_connection(
     # 第一步：测试网络连通性
     try:
         start_time = time.time()
-        async with httpx.AsyncClient(timeout=10.0, follow_redirects=False) as client:
-            # 尝试 GET 请求 base_url（不需要 API Key）
-            response = await client.get(base_url)
-            latency = (time.time() - start_time) * 1000
+        client = get_webui_http_client()
+        # 尝试 GET 请求 base_url（不需要 API Key）
+        response = await client.get(base_url, timeout=10.0, follow_redirects=False)
+        latency = (time.time() - start_time) * 1000
 
-            result["network_ok"] = True
-            result["latency_ms"] = round(latency, 2)
-            result["http_status"] = response.status_code
+        result["network_ok"] = True
+        result["latency_ms"] = round(latency, 2)
+        result["http_status"] = response.status_code
 
     except httpx.ConnectError as e:
         result["error"] = f"连接失败：无法连接到服务器 ({str(e)})"
@@ -696,29 +697,29 @@ async def _test_provider_connection(
     if api_key:
         try:
             start_time = time.time()
-            async with httpx.AsyncClient(timeout=15.0, follow_redirects=False) as client:
-                headers = {"Content-Type": "application/json"}
-                params = {}
+            client = get_webui_http_client()
+            headers = {"Content-Type": "application/json"}
+            params = {}
 
-                if client_type == "gemini":
-                    # Gemini 使用 URL 参数传递 API Key
-                    params["key"] = api_key
-                else:
-                    # OpenAI 兼容格式使用 Authorization 头
-                    headers["Authorization"] = f"Bearer {api_key}"
+            if client_type == "gemini":
+                # Gemini 使用 URL 参数传递 API Key
+                params["key"] = api_key
+            else:
+                # OpenAI 兼容格式使用 Authorization 头
+                headers["Authorization"] = f"Bearer {api_key}"
 
-                # 尝试获取模型列表
-                models_url = f"{base_url}/models"
-                response = await client.get(models_url, headers=headers, params=params)
+            # 尝试获取模型列表
+            models_url = f"{base_url}/models"
+            response = await client.get(models_url, headers=headers, params=params, timeout=15.0, follow_redirects=False)
 
-                if response.status_code == 200:
-                    result["api_key_valid"] = True
-                elif response.status_code in (401, 403):
-                    result["api_key_valid"] = False
-                    result["error"] = "API Key 无效或已过期"
-                else:
-                    # 其他状态码，可能是端点不支持，但 Key 可能是有效的
-                    result["api_key_valid"] = None
+            if response.status_code == 200:
+                result["api_key_valid"] = True
+            elif response.status_code in (401, 403):
+                result["api_key_valid"] = False
+                result["error"] = "API Key 无效或已过期"
+            else:
+                # 其他状态码，可能是端点不支持，但 Key 可能是有效的
+                result["api_key_valid"] = None
 
         except Exception as e:
             # API Key 验证失败不影响网络连通性结果

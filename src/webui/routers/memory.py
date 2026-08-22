@@ -2345,6 +2345,61 @@ async def _import_retry(task_id: str, payload: dict[str, Any]) -> dict:
     return await memory_service.import_admin(action="retry_failed", task_id=task_id, overrides=overrides)
 
 
+async def _import_pause(task_id: str) -> dict:
+    return await memory_service.import_admin(action="pause", task_id=task_id)
+
+
+async def _import_resume(task_id: str) -> dict:
+    return await memory_service.import_admin(action="resume", task_id=task_id)
+
+
+# 与前端 PAUSABLE_IMPORT_STATUS 对齐的活动状态集合；running 为旧数据兼容
+_IMPORT_ACTIVE_STATUSES = {"queued", "preparing", "splitting", "extracting", "writing", "saving", "running"}
+_IMPORT_COMPLETED_STATUSES = {"completed", "completed_with_errors"}
+_IMPORT_FAILED_STATUSES = {"failed", "cancelled"}
+
+
+async def _import_overall_progress(limit: int) -> dict:
+    # 加权策略：active 任务按各自 progress 计入，completed 记为 1.0；
+    # failed/cancelled 不参与加权，避免历史失败任务拉低当前整体进度。
+    listing = await memory_service.import_admin(action="list", limit=limit)
+    items = listing.get("items") if isinstance(listing.get("items"), list) else []
+    total = len(items)
+    active = completed = failed = 0
+    progress_sum = 0.0
+    progress_count = 0
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        status = str(item.get("status") or "")
+        if status in _IMPORT_COMPLETED_STATUSES:
+            completed += 1
+            progress_sum += 1.0
+            progress_count += 1
+        elif status in _IMPORT_FAILED_STATUSES:
+            failed += 1
+        elif status in _IMPORT_ACTIVE_STATUSES:
+            active += 1
+            try:
+                raw_progress = float(item.get("progress") or 0.0)
+            except (TypeError, ValueError):
+                raw_progress = 0.0
+            # 兼容 0-1 与 0-100 两种进度标度
+            progress_sum += raw_progress / 100.0 if raw_progress > 1.0 else max(0.0, raw_progress)
+            progress_count += 1
+    weighted_progress = round(progress_sum / progress_count, 4) if progress_count else 0.0
+    return {
+        "success": True,
+        "overall": {
+            "total_tasks": total,
+            "active_tasks": active,
+            "completed_tasks": completed,
+            "failed_tasks": failed,
+            "weighted_progress": weighted_progress,
+        },
+    }
+
+
 async def _tuning_settings() -> dict:
     return await memory_service.tuning_admin(action="get_settings")
 
@@ -3048,6 +3103,21 @@ async def cancel_memory_import_task(task_id: str):
 @router.post("/import/tasks/{task_id}/retry")
 async def retry_memory_import_task(task_id: str, payload: dict[str, Any] = Body(default_factory=dict)):
     return await _import_retry(task_id, payload)
+
+
+@router.post("/import/tasks/{task_id}/pause")
+async def pause_memory_import_task(task_id: str):
+    return await _import_pause(task_id)
+
+
+@router.post("/import/tasks/{task_id}/resume")
+async def resume_memory_import_task(task_id: str):
+    return await _import_resume(task_id)
+
+
+@router.get("/import/progress/overall")
+async def get_memory_import_overall_progress(limit: int = Query(200, ge=1, le=500)):
+    return await _import_overall_progress(limit)
 
 
 @router.get("/retrieval_tuning/settings")
