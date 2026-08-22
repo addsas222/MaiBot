@@ -10,7 +10,7 @@ from collections import deque
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Set, Tuple
+from typing import Any, Awaitable, Callable, Dict, List, Optional, Set, Tuple
 import asyncio
 import hashlib
 import json
@@ -359,8 +359,6 @@ class ImportTaskRecord:
     retry_summary: Dict[str, Any] = field(default_factory=dict)
     cancel_requested_at: Optional[float] = None
     cancel_origin: str = ""
-    # NOTE(upstream): 本地补丁（暂停/恢复/看门狗），待同步上游 MaiBot_branch
-    paused: bool = False
 
     def to_summary(self) -> Dict[str, Any]:
         return {
@@ -387,7 +385,6 @@ class ImportTaskRecord:
             "retry_summary": dict(self.retry_summary),
             "cancel_requested_at": self.cancel_requested_at,
             "cancel_origin": self.cancel_origin,
-            "paused": self.paused,
         }
 
     def to_detail(self, include_chunks: bool = False) -> Dict[str, Any]:
@@ -410,8 +407,6 @@ class ImportTaskManager:
         self._active_run_task: Optional[asyncio.Task] = None
 
         self._worker_task: Optional[asyncio.Task] = None
-        # NOTE(upstream): 本地补丁（暂停/恢复/看门狗），待同步上游 MaiBot_branch
-        self._watchdog_task: Optional[asyncio.Task] = None
         self._stopping = False
 
         self._import_root = self._resolve_import_root()
@@ -1369,9 +1364,6 @@ class ImportTaskManager:
                 return
             self._stopping = False
             self._worker_task = asyncio.create_task(self._worker_loop())
-            # NOTE(upstream): 本地补丁（暂停/恢复/看门狗），待同步上游 MaiBot_branch
-            if not self._watchdog_task or self._watchdog_task.done():
-                self._watchdog_task = asyncio.create_task(self._watchdog_loop())
 
     async def get_runtime_settings(self) -> Dict[str, Any]:
         llm_retry = self._llm_retry_config()
@@ -1862,29 +1854,6 @@ class ImportTaskManager:
             run_task.cancel()
         return summary
 
-    # NOTE(upstream): 本地补丁（暂停/恢复/看门狗），待同步上游 MaiBot_branch
-    async def pause_task(self, task_id: str) -> Optional[Dict[str, Any]]:
-        async with self._lock:
-            task = self._tasks.get(task_id)
-            if not task:
-                return None
-            if task.status in {"queued", "preparing", "running"} and not task.paused:
-                task.paused = True
-                task.updated_at = _now()
-                self._try_write_task_report(task)
-            return task.to_summary()
-
-    async def resume_task(self, task_id: str) -> Optional[Dict[str, Any]]:
-        async with self._lock:
-            task = self._tasks.get(task_id)
-            if not task:
-                return None
-            if task.paused:
-                task.paused = False
-                task.updated_at = _now()
-                self._try_write_task_report(task)
-            return task.to_summary()
-
     def _build_retry_plan(self, task: ImportTaskRecord) -> Dict[str, Any]:
         chunk_retry_candidates: List[Tuple[ImportFileRecord, List[int]]] = []
         file_fallback_candidates: List[ImportFileRecord] = []
@@ -2151,9 +2120,6 @@ class ImportTaskManager:
             self._queue.clear()
             worker = self._worker_task
             self._worker_task = None
-            # NOTE(upstream): 本地补丁（暂停/恢复/看门狗），待同步上游 MaiBot_branch
-            watchdog = self._watchdog_task
-            self._watchdog_task = None
 
         if worker:
             worker.cancel()
@@ -2163,13 +2129,6 @@ class ImportTaskManager:
                 logger.debug("Web 导入工作线程已取消")
             except Exception:
                 logger.exception("Web 导入工作线程关闭异常")
-
-        if watchdog:
-            watchdog.cancel()
-            try:
-                await watchdog
-            except asyncio.CancelledError:
-                logger.debug("Web 导入看门狗协程已取消")
 
         self._cleanup_temp_root()
 
@@ -2322,9 +2281,6 @@ class ImportTaskManager:
             task.updated_at = _now()
             if task.params.get("clear_manifest"):
                 self._clear_manifest()
-
-        # NOTE(upstream): 本地补丁（暂停/恢复/看门狗），待同步上游 MaiBot_branch
-        await self._wait_if_paused(task_id)
 
         async with self._lock:
             task = self._tasks.get(task_id)
@@ -2579,6 +2535,36 @@ class ImportTaskManager:
             except asyncio.TimeoutError:
                 logger.error("迁移子进程强制终止超时")
 
+    async def _wait_for_import_process(
+        self,
+        process: asyncio.subprocess.Process,
+        *,
+        task_id: str,
+        poll_callback: Optional[Callable[[], Awaitable[None]]] = None,
+    ) -> Tuple[Optional[int], bool]:
+        """轮询导入子进程，并确保协程取消时同步终止进程。"""
+        try:
+            while True:
+                if await self._is_cancel_requested(task_id):
+                    await self._terminate_process(process)
+                    return None, True
+                if poll_callback is not None:
+                    await poll_callback()
+                try:
+                    return_code = await asyncio.wait_for(
+                        process.wait(),
+                        timeout=self._timeout_config()["process_poll_seconds"],
+                    )
+                    return return_code, False
+                except asyncio.TimeoutError:
+                    continue
+        except asyncio.CancelledError:
+            await self._terminate_process(process)
+            raise
+        except Exception:
+            await self._terminate_process(process)
+            raise
+
     async def _reload_stores_after_external_migration(self) -> None:
         async with self._storage_lock:
             for store in self._vector_stores_for_persistence():
@@ -2645,25 +2631,20 @@ class ImportTaskManager:
             asyncio.create_task(_drain(process.stderr, stderr_lines)),
         ]
 
-        cancelled = False
-        return_code: Optional[int] = None
-        try:
-            while True:
-                await self._wait_if_paused(task_id)
-                if await self._is_cancel_requested(task_id):
-                    cancelled = True
-                    await self._terminate_process(process)
-                    break
+        async def _refresh_progress() -> None:
+            await self._refresh_maibot_progress_from_state(
+                task_id,
+                file_record.file_id,
+                chunk_id,
+                state_path,
+            )
 
-                await self._refresh_maibot_progress_from_state(task_id, file_record.file_id, chunk_id, state_path)
-                try:
-                    return_code = await asyncio.wait_for(
-                        process.wait(),
-                        timeout=self._timeout_config()["process_poll_seconds"],
-                    )
-                    break
-                except asyncio.TimeoutError:
-                    continue
+        try:
+            return_code, cancelled = await self._wait_for_import_process(
+                process,
+                task_id=task_id,
+                poll_callback=_refresh_progress,
+            )
         finally:
             await asyncio.gather(*drain_tasks, return_exceptions=True)
 
@@ -2828,6 +2809,7 @@ class ImportTaskManager:
             "        failed.append(f'{m}:{e.__class__.__name__}:{e}')\n"
             "print('OK' if not failed else ';'.join(failed))\n"
         )
+        probe: Optional[asyncio.subprocess.Process] = None
         try:
             probe = await asyncio.create_subprocess_exec(
                 sys.executable,
@@ -2840,7 +2822,13 @@ class ImportTaskManager:
                 probe.communicate(),
                 timeout=self._timeout_config()["convert_preflight_seconds"],
             )
+        except asyncio.CancelledError:
+            if probe is not None:
+                await self._terminate_process(probe)
+            raise
         except Exception as e:
+            if probe is not None:
+                await self._terminate_process(probe)
             return False, f"依赖预检执行失败: {e}"
 
         out = (stdout or b"").decode("utf-8", errors="replace").strip()
@@ -2944,23 +2932,11 @@ class ImportTaskManager:
             asyncio.create_task(_drain(process.stderr, stderr_lines)),
         ]
 
-        cancelled = False
-        return_code: Optional[int] = None
         try:
-            while True:
-                await self._wait_if_paused(task_id)
-                if await self._is_cancel_requested(task_id):
-                    cancelled = True
-                    await self._terminate_process(process)
-                    break
-                try:
-                    return_code = await asyncio.wait_for(
-                        process.wait(),
-                        timeout=self._timeout_config()["process_poll_seconds"],
-                    )
-                    break
-                except asyncio.TimeoutError:
-                    continue
+            return_code, cancelled = await self._wait_for_import_process(
+                process,
+                task_id=task_id,
+            )
         finally:
             await asyncio.gather(*drain_tasks, return_exceptions=True)
 
@@ -3089,7 +3065,6 @@ class ImportTaskManager:
     ) -> None:
         async with file_semaphore:
             await self._set_file_state(task_id, file_record.file_id, "preparing", "preparing")
-            await self._wait_if_paused(task_id)
             if await self._is_cancel_requested(task_id):
                 await self._set_file_cancelled(task_id, file_record.file_id, "任务已取消")
                 return
@@ -3237,7 +3212,6 @@ class ImportTaskManager:
                     f"分块处理失败: {result}",
                 )
 
-        await self._wait_if_paused(task_id)
         if await self._is_cancel_requested(task_id):
             await self._set_file_cancelled(task_id, file_record.file_id, "任务已取消")
             return
@@ -3283,7 +3257,6 @@ class ImportTaskManager:
     ) -> None:
         async with chunk_semaphore:
             chunk_id = chunk.chunk.chunk_id
-            await self._wait_if_paused(task_id)
             if await self._is_cancel_requested(task_id):
                 await self._set_chunk_cancelled(task_id, file_record.file_id, chunk_id, "任务已取消")
                 return
@@ -3312,7 +3285,6 @@ class ImportTaskManager:
                 await self._set_chunk_failed(task_id, file_record.file_id, chunk_id, f"抽取失败: {e}")
                 return
 
-            await self._wait_if_paused(task_id)
             if await self._is_cancel_requested(task_id):
                 await self._set_chunk_cancelled(task_id, file_record.file_id, chunk_id, "任务已取消")
                 return
@@ -3395,7 +3367,6 @@ class ImportTaskManager:
                     f"JSON 单元处理失败: {result}",
                 )
 
-        await self._wait_if_paused(task_id)
         if await self._is_cancel_requested(task_id):
             await self._set_file_cancelled(task_id, file_record.file_id, "任务已取消")
             return
@@ -3599,7 +3570,6 @@ class ImportTaskManager:
     ) -> None:
         chunk_id = unit["chunk_id"]
         async with chunk_semaphore:
-            await self._wait_if_paused(task_id)
             if await self._is_cancel_requested(task_id):
                 await self._set_chunk_cancelled(task_id, file_record.file_id, chunk_id, "任务已取消")
                 return
@@ -4454,57 +4424,6 @@ JSON schema:
             if not task:
                 return True
             return task.status == "cancel_requested"
-
-    # NOTE(upstream): 本地补丁（暂停/恢复/看门狗），待同步上游 MaiBot_branch
-    async def _wait_if_paused(self, task_id: str) -> None:
-        """在文件/块边界等待暂停恢复；取消请求可随时打断暂停等待。"""
-        while True:
-            async with self._lock:
-                task = self._tasks.get(task_id)
-                if not task or not task.paused or task.status == "cancel_requested":
-                    return
-            await asyncio.sleep(0.5)
-
-    def _watchdog_stall_seconds(self) -> float:
-        # 下限需大于最慢单次块内操作（LLM 调用超时默认 240s），否则正常慢调用会被误判为卡死
-        return max(300.0, self._cfg_float("web.import.watchdog.stall_seconds", 900.0))
-
-    async def _watchdog_loop(self) -> None:
-        while True:
-            await asyncio.sleep(30.0)
-            try:
-                await self._watchdog_sweep()
-            except asyncio.CancelledError:
-                raise
-            except Exception as exc:
-                logger.warning(f"导入看门狗巡检异常（本轮已跳过）: {exc}")
-
-    async def _watchdog_sweep(self) -> None:
-        if not bool(self._cfg("web.import.watchdog.enabled", True)):
-            return
-        stall_seconds = self._watchdog_stall_seconds()
-        now = _now()
-        stale: List[Tuple[str, float]] = []
-        async with self._lock:
-            for task in self._tasks.values():
-                if task.status in {"preparing", "running"} and not task.paused:
-                    idle = now - task.updated_at
-                    if idle > stall_seconds:
-                        stale.append((task.task_id, idle))
-        for task_id, idle in stale:
-            async with self._lock:
-                task = self._tasks.get(task_id)
-                if not task or task.status not in {"preparing", "running"} or task.paused:
-                    continue
-                # 复用协作式取消通道终止卡死任务；_mark_task_cancelled_locked 不覆盖 error，消息可保留
-                task.error = f"看门狗：任务超过 {int(idle)} 秒无进展，已自动终止"
-                task.cancel_requested_at = _now()
-                task.cancel_origin = "watchdog"
-                task.status = "cancel_requested"
-                task.current_step = "cancel_requested"
-                task.updated_at = _now()
-                self._try_write_task_report(task)
-            logger.warning(f"看门狗：任务 {task_id} 超过 {int(idle)} 秒无进展，已自动终止")
 
     def _find_file(self, task: ImportTaskRecord, file_id: str) -> Optional[ImportFileRecord]:
         for f in task.files:
