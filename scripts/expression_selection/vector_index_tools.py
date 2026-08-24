@@ -448,7 +448,6 @@ def write_index(
     payload = {
         "version": INDEX_VERSION,
         "generated_at": datetime.now().isoformat(timespec="seconds"),
-        "database_url": DATABASE_URL,
         "embedding_model": embedding_model,
         "embedding_profile_marker": embedding_profile_marker,
         "embedding_profile_version": int(embedding_profile_version),

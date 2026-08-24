@@ -468,3 +468,15 @@ XSS 汇点 2 处均为静态常量（chart.tsx:78 主题 CSS 生成、EmojiDialo
 ### 14.6 结论
 
 **有条件通过**。主程序与前端无新缺陷；S1（路径穿越）必须修复，S2/S3 建议随本轮整改。已审基线更新为 `1790fcc62`。
+
+### 14.7 整改记录（2026-08-24）
+
+| 项 | 状态 | 验证 |
+|---|---|---|
+| S1 | ✅ 已整改 | `_import_items` 入口整体校验 manifest 文件名（basename 一致性/`.`/`..`/NUL），恶意名抛 ValueError 中止整个导入；行为测试：`../../evil.png`、`a/b.png`、`..`、`sub/dir/x.webp` 全部拦截，合法名正常进入后续流程 |
+| S2 | ✅ 已整改 | 新增 `--api-key` Bearer 鉴权（`_check_gateway_auth` 覆盖两个端点）；非环回监听且未配置令牌时 `SystemExit` 拒绝启动。行为验证：`--host 0.0.0.0` 被拒、环回默认正常启动且无凭据请求 401 |
+| S3 | ✅ 已整改 | auth.json 改为 `os.open(0o600)` + 临时文件 `os.replace` 原子落盘 |
+| S4 | ✅ 已整改 | 三处上游错误体改为日志留存（logger.warning/error），客户端仅收到状态码与通用描述 |
+| S5 | ✅ 已整改 | 报告 JSON 移除 database_url 字段 |
+
+脚本均为离线工具，无需重启机器人；changelog 已并入 [1.2.4] 安全小节。

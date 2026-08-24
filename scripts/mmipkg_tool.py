@@ -579,6 +579,13 @@ class MMIPKGUnpacker:
         self, payload_stream: BinaryIO, items: List[Dict], output_dir: str, replace_existing: bool, batch_size: int
     ) -> bool:
         """导入 items 到数据库"""
+        # 安全校验（第六轮审计 S1）：items 来自不可信的表情包 manifest，
+        # 先整体校验文件名，拒绝路径穿越（../../ 等），防止任意文件写入；
+        # 发现恶意文件名时中止整个导入，而不是按单条错误继续部分导入
+        for item in items:
+            fn = item.get("fn", "")
+            if fn and (os.path.basename(fn) != fn or fn in {".", ".."} or "\x00" in fn):
+                raise ValueError(f"表情包 manifest 含非法文件名: {fn!r}，已中止导入以防路径穿越")
         try:
             imported_count = 0
             skipped_count = 0

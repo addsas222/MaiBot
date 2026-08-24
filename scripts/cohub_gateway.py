@@ -15,6 +15,7 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import os
 import time
 import uuid
 from pathlib import Path
@@ -33,6 +34,23 @@ COHUB_API_BASE = "https://api.cohub.run"
 SPACE_ID = "6ec8e940-0532-4ea7-9419-8f20fc89683c"
 
 app = FastAPI(title="Cohub OpenAI 兼容网关")
+# 网关访问令牌（--api-key）；为空表示不鉴权，此时仅允许环回监听（见 __main__ 校验）
+app.state.api_key = ""
+
+
+def _check_gateway_auth(request: Request) -> Optional[JSONResponse]:
+    """校验网关 Bearer 鉴权（第六轮审计 S2）。
+
+    配置了 --api-key 时，两个端点均要求 ``Authorization: Bearer <key>``；
+    未配置时放行（仅限环回地址监听，由启动校验保证）。
+    """
+    expected = app.state.api_key
+    if not expected:
+        return None
+    provided = request.headers.get("authorization", "").removeprefix("Bearer ").strip()
+    if provided != expected:
+        return JSONResponse(status_code=401, content={"error": {"message": "无效的 API Key"}})
+    return None
 
 
 class AuthError(Exception):
@@ -105,7 +123,9 @@ def refresh_access_token(auth: Dict[str, Any]) -> str:
     except httpx.HTTPError as exc:
         raise AuthError(f"token 刷新请求失败: {exc}") from exc
     if response.status_code != 200:
-        raise AuthError(f"token 刷新失败 (HTTP {response.status_code}): {response.text[:500]}")
+        # 上游错误体可能含内部端点/配额信息，详情仅入日志，不对外透传（第六轮审计 S4）
+        logger.error(f"token 刷新失败 (HTTP {response.status_code}): {response.text[:500]}")
+        raise AuthError(f"token 刷新失败 (HTTP {response.status_code})，详情见日志")
     data = response.json()
     new_access = data.get("access_token")
     if not new_access:
@@ -115,7 +135,14 @@ def refresh_access_token(auth: Dict[str, Any]) -> str:
         auth["refreshToken"] = data["refresh_token"]
     auth["accessTokenExpiresAt"] = int(time.time() * 1000) + (data.get("expires_in", 3600) * 1000)
     auth["updatedAt"] = int(time.time() * 1000)
-    AUTH_FILE.write_text(json.dumps(auth, ensure_ascii=False, indent=2), encoding="utf-8")
+    # 原子落盘（第六轮审计 S3）：0600 权限 + 临时文件 rename，
+    # 防止明文令牌随 umask 泄漏或写入中断导致文件截断
+    AUTH_FILE.parent.mkdir(parents=True, exist_ok=True)
+    tmp_path = AUTH_FILE.with_name(AUTH_FILE.name + ".tmp")
+    fd = os.open(tmp_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w", encoding="utf-8") as auth_file:
+        json.dump(auth, auth_file, ensure_ascii=False, indent=2)
+    os.replace(tmp_path, AUTH_FILE)
     logger.info("已刷新 Cohub access token")
     return new_access
 
@@ -449,8 +476,11 @@ async def _translate_stream(
 
 
 @app.get("/v1/models")
-async def list_models() -> Any:
+async def list_models(request: Request) -> Any:
     """列出网关可用的模型（转发 Cohub 模型目录）。"""
+    auth_failure = _check_gateway_auth(request)
+    if auth_failure is not None:
+        return auth_failure
     try:
         auth = load_auth()
         token = get_access_token(auth)
@@ -465,9 +495,11 @@ async def list_models() -> Any:
     except httpx.HTTPError as exc:
         return JSONResponse(status_code=502, content={"error": {"message": f"获取模型列表失败: {exc}"}})
     if response.status_code != 200:
+        # 上游错误体可能含内部信息，详情仅入日志（第六轮审计 S4）
+        logger.warning(f"Cohub 模型目录返回异常 (HTTP {response.status_code}): {response.text[:500]}")
         return JSONResponse(
             status_code=response.status_code,
-            content={"error": {"message": f"Cohub 返回 {response.status_code}: {response.text[:500]}"}},
+            content={"error": {"message": f"Cohub 返回 {response.status_code}，详情见服务端日志"}},
         )
     catalog = response.json()
     cohub_models = catalog.get("cohub") or []
@@ -482,6 +514,9 @@ async def list_models() -> Any:
 @app.post("/v1/chat/completions")
 async def chat_completions(request: Request) -> Any:
     """OpenAI 兼容的聊天补全端点。"""
+    auth_failure = _check_gateway_auth(request)
+    if auth_failure is not None:
+        return auth_failure
     try:
         body = await request.json()
     except json.JSONDecodeError:
@@ -519,9 +554,10 @@ async def chat_completions(request: Request) -> Any:
         return JSONResponse(status_code=502, content={"error": {"message": f"Cohub 请求失败: {exc}"}})
 
     if upstream.status_code != 200:
+        logger.warning(f"Cohub 上游返回异常 (HTTP {upstream.status_code}): {upstream.text[:500]}")
         return JSONResponse(
             status_code=upstream.status_code,
-            content={"error": {"message": f"Cohub 返回 {upstream.status_code}: {upstream.text[:500]}"}},
+            content={"error": {"message": f"Cohub 返回 {upstream.status_code}，详情见服务端日志"}},
         )
 
     if stream:
@@ -543,13 +579,21 @@ async def chat_completions(request: Request) -> Any:
 
 
 def main() -> None:
-    """启动网关服务。"""
     parser = argparse.ArgumentParser(description="Cohub OpenAI 兼容网关")
     parser.add_argument("--port", type=int, default=8787, help="监听端口（默认 8787）")
     parser.add_argument("--host", default="127.0.0.1", help="监听地址（默认 127.0.0.1）")
     parser.add_argument("--space", default=SPACE_ID, help="Cohub 空间 ID")
+    parser.add_argument(
+        "--api-key",
+        default="",
+        help="网关访问令牌；绑定非环回地址时必须设置，客户端需携带 Authorization: Bearer <key>",
+    )
     args = parser.parse_args()
     app.state.space_id = args.space
+    app.state.api_key = args.api_key.strip()
+    # 安全防呆（第六轮审计 S2）：非环回监听且未配置令牌会向局域网暴露用户 Cohub 配额，拒绝启动
+    if args.host not in {"127.0.0.1", "localhost", "::1"} and not app.state.api_key:
+        raise SystemExit("绑定非环回地址时必须通过 --api-key 设置访问令牌")
     uvicorn.run(app, host=args.host, port=args.port, log_level="info")
 
 

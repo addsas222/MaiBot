@@ -9,6 +9,9 @@
 - MCP 宿主服务器监听非环回地址且未配置访问令牌时，启动输出强告警（E3）
 - OpenAI 兼容 base_url 缺协议前缀时按目标区分补全：本机/内网补 `http://`，公网补 `https://` 并告警，避免 API Key 明文跨网传输（E4）
 - dashboard 前端依赖安全升级：seroval（critical）修复、nanoid 高危链移除，npm 审计生产可达面清零；剩余 8 项均为 dev 工具链（vitest/electron 等），需跨大版本升级，留待上游发布线处理（N1）
+- 修复表情包导入工具（scripts/mmipkg_tool.py）路径穿越漏洞：manifest 文件名未净化可写任意文件，现导入前整体校验并中止恶意包（第六轮审计 S1）
+- Cohub 网关（scripts/cohub_gateway.py）新增 `--api-key` Bearer 鉴权，绑定非环回地址且未配置令牌时拒绝启动（S2）；认证文件改为 0600 权限原子落盘（S3）；上游错误体不再透传客户端、仅入日志（S4）
+- 聚类报告 JSON 移除 database_url 字段（S5）
 # [1.2.3] - 2026-8-23
 
 ## 表达方式
