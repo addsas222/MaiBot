@@ -427,3 +427,44 @@ eval/exec/yaml.load/shell=True/SSL verify=False/md5-sha1 用于令牌/random 用
 | W1/W2 | 📋 保持观测 | 不在本轮整改范围 |
 
 回归：全量 1555 passed / 3 skipped（含 2 个适配新请求模型的 model 路由测试）；dashboard `npm run build` 通过。
+
+---
+## 14. 第六轮增量复审（2026-08-24，覆盖面补全）
+
+### 14.1 范围与方法
+
+补全第五轮未覆盖的面：A_memorix 变更深读（第五轮 scout 空转未完成，本轮定向复核）、`scripts/` 全量（16 文件约 6700 行）、`dashboard/src` 前端（615 文件约 20.8 万行，10 类模式扫描）、W1/W2 观测项落地复核。基线仍为 `adfd075f8..1790fcc62`。
+
+### 14.2 A_memorix 深读结论：上游修复全部落地，零新发现
+
+| 维度 | 证据 |
+|---|---|
+| 已删除证据隔离 | 删除=物理出库：`pending_cleanup` → Outbox 串行消费（`_storage_cleanup_lock`），双池路由正确（paragraph→段落池，entity/relation→图谱池），逐批 checkpoint（begin/commit/rollback_cleanup_checkpoint），不可恢复时抛 `_VectorCleanupRollbackError` 停止同池后续任务 |
+| 向量指纹信任 | `dual_vector_state_service.py:65-80`：current 与 manifest 指纹哈希比对，缺失/不匹配即降级单池 |
+| 导入入参校验 | `import_payloads.py`：专属 `ImportPayloadValidationError`，7+ 校验点全部 raise 不兜底 |
+| 事务原子性 | `metadata_store.py` BEGIN/commit/rollback 原语 30 处 |
+
+### 14.3 scripts/ 发现（2 高 2 中 1 低）
+
+| # | 级别 | 位置 | 问题 | 处置建议 |
+|---|---|---|---|---|
+| S1 | 🔴 高 | `scripts/mmipkg_tool.py:643-656` | 表情包 manifest（不可信 msgpack 内容）的 `fn` 字段未净化直接 `os.path.join(output_dir, filename)`，`../../` 路径穿越可写任意文件 | P1：`os.path.basename(fn)` + 拒绝含路径分隔符/`..` 的文件名 |
+| S2 | 🟡 高（条件性） | `scripts/cohub_gateway.py:451,482` | `/v1/models`、`/v1/chat/completions` 完全无鉴权；默认绑 127.0.0.1 但 `--host 0.0.0.0` 时本机任意进程/局域网可消耗用户 Cohub 配额 | P1：加可选 Bearer token 校验；非环回监听且未配置 token 时拒绝启动或强告警 |
+| S3 | 🟡 中 | `scripts/cohub_gateway.py:118` | 刷新后的 auth.json（含 access/refresh token）明文 `write_text` 落盘：无 chmod 600（随 umask）、非原子（断电可截断） | P2：写前 `os.open(..., 0o600)` + 临时文件 rename 原子替换 |
+| S4 | 🟡 中 | `scripts/cohub_gateway.py:107,470,520` 附近 | 上游错误体 `response.text[:500]` 直接回传客户端，可能泄漏内部端点/配额信息 | P2：仅回传状态码与通用描述，详情入日志 |
+| S5 | ⚪ 低 | `scripts/expression_selection/vector_index_tools.py:451` | database_url 写入输出报告 JSON（当前 sqlite 路径无凭据） | P3：脱敏或移除 |
+
+其余 13 个脚本零命中：无 subprocess/eval/pickle、无 requests 缺 timeout/verify、无硬编码密钥、token 不入日志、np.load 均 allow_pickle=False。
+
+### 14.4 dashboard/src 前端：干净
+
+XSS 汇点 2 处均为静态常量（chart.tsx:78 主题 CSS 生成、EmojiDialogs.tsx:96 硬编码 SVG 占位符）；localStorage/sessionStorage 仅存 UI 偏好（主题/布局/tour/locale），**无 token/密钥**；postMessage、eval/new Function、document.write、rehype-raw 零命中；WS 地址按页面协议构造（http→ws、https→wss，`unified-ws.ts:353`）且用临时 token；api_key 字面量仅存在于测试夹具。唯一低危：`Header.tsx:600` `window.open(..., '_blank')` 未显式传 noopener（目标为第一方文档站，风险极低）。
+
+### 14.5 W1/W2 复核结论（均降级为无需整改）
+
+- W1 鉴权风格：多行感知复查后 **21/23 路由器均有 router 级 `dependencies=[Depends(require_auth)]`**；openai_gateway 为面向外部前端的 Bearer 设计（刻意手动校验，空 token 401）；日志 WebSocket 走临时 token（`logs_ws.py:116-129`）。全端点面已覆盖，第五轮"三种风格并存属结构性风险"降级为"风格已统一"。
+- W2 吞异常：`common/logger.py:221-250` 的静默吞异常为**防日志递归的合理设计**（在日志发射路径内再记日志会无限递归），保持现状。
+
+### 14.6 结论
+
+**有条件通过**。主程序与前端无新缺陷；S1（路径穿越）必须修复，S2/S3 建议随本轮整改。已审基线更新为 `1790fcc62`。
