@@ -17,9 +17,13 @@ import json
 import logging
 import os
 <<<<<<< HEAD
+<<<<<<< HEAD
 import secrets
 =======
 >>>>>>> c7a23699d (fix: 第六轮审计整改——表情包导入路径穿越拦截/Cohub网关鉴权与令牌原子落盘/上游错误体不外传)
+=======
+import secrets
+>>>>>>> 73988f528 (fix: 第七轮审计整改——Cohub网关恒定时间鉴权与文档端点屏蔽/S4残留全面收敛/运行时索引payload移除database_url/mmipkg导入守卫加固)
 import time
 import uuid
 from pathlib import Path
@@ -52,6 +56,9 @@ def _check_gateway_auth(request: Request) -> Optional[JSONResponse]:
     if not expected:
         return None
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> 73988f528 (fix: 第七轮审计整改——Cohub网关恒定时间鉴权与文档端点屏蔽/S4残留全面收敛/运行时索引payload移除database_url/mmipkg导入守卫加固)
     # RFC 6750：scheme 大小写不敏感；恒定时间比较防时序侧信道（第七轮审计 H3）
     parts = request.headers.get("authorization", "").split(None, 1)
     if (
@@ -59,6 +66,7 @@ def _check_gateway_auth(request: Request) -> Optional[JSONResponse]:
         or parts[0].lower() != "bearer"
         or not secrets.compare_digest(parts[1].strip().encode("utf-8"), expected.encode("utf-8"))
     ):
+<<<<<<< HEAD
         return JSONResponse(status_code=401, content={"error": {"message": "无效的 API Key"}})
     return None
 
@@ -90,9 +98,37 @@ app.add_middleware(_HideDocsWhenAuthed)
 =======
     provided = request.headers.get("authorization", "").removeprefix("Bearer ").strip()
     if provided != expected:
+=======
+>>>>>>> 73988f528 (fix: 第七轮审计整改——Cohub网关恒定时间鉴权与文档端点屏蔽/S4残留全面收敛/运行时索引payload移除database_url/mmipkg导入守卫加固)
         return JSONResponse(status_code=401, content={"error": {"message": "无效的 API Key"}})
     return None
 >>>>>>> c7a23699d (fix: 第六轮审计整改——表情包导入路径穿越拦截/Cohub网关鉴权与令牌原子落盘/上游错误体不外传)
+
+
+class _HideDocsWhenAuthed:
+    """鉴权开启时以 404 屏蔽自动文档端点，收敛未认证可探测的路由面（第七轮审计 H3）。
+
+    纯 ASGI 中间件实现，避免 BaseHTTPMiddleware 对 SSE 流式响应的潜在影响；
+    文档路由在 FastAPI 构造期注册，事后置空 openapi_url 会导致 /docs 触发 500，
+    故必须在 ASGI 层拦截。
+    """
+
+    def __init__(self, asgi_app):
+        self.asgi_app = asgi_app
+
+    async def __call__(self, scope, receive, send):
+        if (
+            scope["type"] == "http"
+            and app.state.api_key
+            and scope["path"] in {"/docs", "/redoc", "/openapi.json"}
+        ):
+            not_found = JSONResponse(status_code=404, content={"error": {"message": "未找到请求的资源"}})
+            await not_found(scope, receive, send)
+            return
+        await self.asgi_app(scope, receive, send)
+
+
+app.add_middleware(_HideDocsWhenAuthed)
 
 
 class AuthError(Exception):
