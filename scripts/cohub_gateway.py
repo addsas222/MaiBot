@@ -16,6 +16,7 @@ import argparse
 import json
 import logging
 import os
+import secrets
 import time
 import uuid
 from pathlib import Path
@@ -47,10 +48,41 @@ def _check_gateway_auth(request: Request) -> Optional[JSONResponse]:
     expected = app.state.api_key
     if not expected:
         return None
-    provided = request.headers.get("authorization", "").removeprefix("Bearer ").strip()
-    if provided != expected:
+    # RFC 6750：scheme 大小写不敏感；恒定时间比较防时序侧信道（第七轮审计 H3）
+    parts = request.headers.get("authorization", "").split(None, 1)
+    if (
+        len(parts) != 2
+        or parts[0].lower() != "bearer"
+        or not secrets.compare_digest(parts[1].strip().encode("utf-8"), expected.encode("utf-8"))
+    ):
         return JSONResponse(status_code=401, content={"error": {"message": "无效的 API Key"}})
     return None
+
+
+class _HideDocsWhenAuthed:
+    """鉴权开启时以 404 屏蔽自动文档端点，收敛未认证可探测的路由面（第七轮审计 H3）。
+
+    纯 ASGI 中间件实现，避免 BaseHTTPMiddleware 对 SSE 流式响应的潜在影响；
+    文档路由在 FastAPI 构造期注册，事后置空 openapi_url 会导致 /docs 触发 500，
+    故必须在 ASGI 层拦截。
+    """
+
+    def __init__(self, asgi_app):
+        self.asgi_app = asgi_app
+
+    async def __call__(self, scope, receive, send):
+        if (
+            scope["type"] == "http"
+            and app.state.api_key
+            and scope["path"] in {"/docs", "/redoc", "/openapi.json"}
+        ):
+            not_found = JSONResponse(status_code=404, content={"error": {"message": "未找到请求的资源"}})
+            await not_found(scope, receive, send)
+            return
+        await self.asgi_app(scope, receive, send)
+
+
+app.add_middleware(_HideDocsWhenAuthed)
 
 
 class AuthError(Exception):
@@ -121,7 +153,9 @@ def refresh_access_token(auth: Dict[str, Any]) -> str:
     try:
         response = httpx.post(token_endpoint, data=payload, timeout=30)
     except httpx.HTTPError as exc:
-        raise AuthError(f"token 刷新请求失败: {exc}") from exc
+        # 网络异常细节可能含上游端点信息，仅入日志，不对外透传（第七轮审计 S4 残留清理）
+        logger.error(f"token 刷新请求失败: {exc}")
+        raise AuthError("token 刷新请求失败，详情见日志") from exc
     if response.status_code != 200:
         # 上游错误体可能含内部端点/配额信息，详情仅入日志，不对外透传（第六轮审计 S4）
         logger.error(f"token 刷新失败 (HTTP {response.status_code}): {response.text[:500]}")
@@ -129,7 +163,9 @@ def refresh_access_token(auth: Dict[str, Any]) -> str:
     data = response.json()
     new_access = data.get("access_token")
     if not new_access:
-        raise AuthError(f"token 刷新响应缺少 access_token: {data}")
+        # 上游响应体仅入日志，不对外透传（第七轮审计 S4 残留清理）
+        logger.error(f"token 刷新响应缺少 access_token: {data}")
+        raise AuthError("token 刷新响应异常，详情见日志")
     auth["accessToken"] = new_access
     if data.get("refresh_token"):
         auth["refreshToken"] = data["refresh_token"]
@@ -470,8 +506,9 @@ async def _translate_stream(
             yield f"data: {json.dumps(final_chunk, ensure_ascii=False)}\n\n"
             yield "data: [DONE]\n\n"
         elif event_type == "error":
+            # 上游错误详情仅入日志，流内只透出通用消息与错误码（第七轮审计 S4 残留清理）
             logger.error(f"Cohub 流式错误: {event.get('code')} {event.get('message')}")
-            yield f"data: {json.dumps({'error': {'message': event.get('message', 'Cohub 流式错误')}, 'code': event.get('code')}, ensure_ascii=False)}\n\n"
+            yield f"data: {json.dumps({'error': {'message': 'Cohub 流式错误，详情见服务端日志'}, 'code': event.get('code')}, ensure_ascii=False)}\n\n"
             yield "data: [DONE]\n\n"
 
 
@@ -493,7 +530,9 @@ async def list_models(request: Request) -> Any:
                 headers={"Authorization": f"Bearer {token}"},
             )
     except httpx.HTTPError as exc:
-        return JSONResponse(status_code=502, content={"error": {"message": f"获取模型列表失败: {exc}"}})
+        # 异常细节可能含上游 URL，仅入日志（第七轮审计 S4 残留清理）
+        logger.error(f"获取模型列表失败: {exc}")
+        return JSONResponse(status_code=502, content={"error": {"message": "获取模型列表失败，详情见服务端日志"}})
     if response.status_code != 200:
         # 上游错误体可能含内部信息，详情仅入日志（第六轮审计 S4）
         logger.warning(f"Cohub 模型目录返回异常 (HTTP {response.status_code}): {response.text[:500]}")
@@ -551,7 +590,9 @@ async def chat_completions(request: Request) -> Any:
                 headers=headers,
             )
     except httpx.HTTPError as exc:
-        return JSONResponse(status_code=502, content={"error": {"message": f"Cohub 请求失败: {exc}"}})
+        # 异常细节可能含上游 URL，仅入日志（第七轮审计 S4 残留清理）
+        logger.error(f"Cohub 请求失败: {exc}")
+        return JSONResponse(status_code=502, content={"error": {"message": "Cohub 请求失败，详情见服务端日志"}})
 
     if upstream.status_code != 200:
         logger.warning(f"Cohub 上游返回异常 (HTTP {upstream.status_code}): {upstream.text[:500]}")

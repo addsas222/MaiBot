@@ -1602,12 +1602,10 @@ class ExpressionVectorIndex:
         existing_payload = await asyncio.to_thread(_load_index_payload, index_path)
 
         if existing_payload is None:
-            from src.common.database.database import DATABASE_URL
-
+            # 索引 payload 不落库 database_url（第七轮审计：与 vector_index_tools 对齐，避免本地路径外泄）
             payload = {
                 "version": VECTOR_INDEX_VERSION,
                 "generated_at": datetime.now().isoformat(timespec="seconds"),
-                "database_url": DATABASE_URL,
                 "args": {"source": "incremental_learning"},
             }
             return _MutableExpressionIndexState(

@@ -480,3 +480,41 @@ XSS 汇点 2 处均为静态常量（chart.tsx:78 主题 CSS 生成、EmojiDialo
 | S5 | ✅ 已整改 | 报告 JSON 移除 database_url 字段 |
 
 脚本均为离线工具，无需重启机器人；changelog 已并入 [1.2.4] 安全小节。
+
+---
+## 15. 第七轮增量复审（2026-08-25，整改复核与残留收敛）
+
+### 15.1 范围与方法
+
+基线 `1790fcc62`（第六轮已审）→ HEAD `c7a23699d`（第六轮整改提交本身），代码变更仅 3 文件（cohub_gateway.py / mmipkg_tool.py / vector_index_tools.py，+57−7）。方法：5 路并行深读验证（S1 完整性 / S2 覆盖面与强度 / S3 原子性 / S4 泄漏残留 / 危险模式扫描）→ 争议发现交由独立怀疑者对抗复核（默认立场为驳倒）→ 行为冒烟验证。
+
+### 15.2 前序整改复核结论
+
+| 项 | 复核结论 |
+|---|---|
+| S1 | 机制正确；本轮加固：空文件名前置拒绝（原 `if fn` 会放行空串进入退化写路径）、显式拒绝 `/` 与 `\` 分隔符、写盘前拒绝符号链接目标（replace_existing=True 时原实现会穿透预置符号链接写出目录外，经对抗复核降级为纵深防御 P3——攻击者仅控制包内容，无法预置本地符号链接） |
+| S2 | 两路由全覆盖、非环回无令牌拒启均确认；本轮强化：`secrets.compare_digest` 恒定时间比较、Bearer scheme 大小写不敏感（RFC 6750）、开启鉴权时 `/docs` `/redoc` `/openapi.json` 由纯 ASGI 中间件以 404 屏蔽 |
+| S3 | 原子落盘语义正确；残余低危接受：无 fsync（断电丢新令牌，旧文件完好）、固定 .tmp 名并发刷新冲突、异常中断残留半写 .tmp（0600）、已存在 .tmp 沿用旧权限。单管理员本机工具场景均不构成实际风险，记录不动 |
+| S4 | **判定 incomplete**：三处非 200 错误体已收敛，但仍有 4 类客户端可见上游细节（见 R7-1），本轮全部补齐 |
+| S5 | **判定 incomplete**：脚本侧已移除，运行时同源写入点仍在（见 R7-2），本轮补齐 |
+
+### 15.3 本轮发现与整改
+
+| # | 级别 | 位置 | 问题 | 处置 |
+|---|---|---|---|---|
+| R7-1 | 🟡 中 | cohub_gateway.py 多处 | S4 残留：①刷新网络异常 `AuthError(f"...{exc}")` 经端点 401 体透出 httpx 异常文本（含上游 URL）；②模型目录/聊天 502 同类透出；③刷新响应缺 token 时 `{data}` 上游响应体透出；④SSE 流内 `error` 事件 message 原样转发客户端 | 全部改为日志留存 + 客户端通用描述（"详情见日志"）；行为冒烟确认 |
+| R7-2 | 🟡 中 | src/chat/replyer/expression_vector_index.py:1610 | S5 遗漏同源点：运行时索引 payload 仍写入 `database_url`（本地 sqlite 路径外泄至磁盘工件 JSON；全仓库无读取方） | 移除该键及函数内死导入 |
+| R7-3 | 🟢 低 | cohub_gateway.py `_check_gateway_auth` | 普通 `!=` 比较（时序侧信道）、`Bearer` 前缀大小写敏感（违反 RFC 6750，小写 scheme 被误 401） | compare_digest + split 解析 scheme 小写比较 |
+| R7-4 | 🟢 低 | cohub_gateway.py | 开启鉴权时 `/docs` `/redoc` `/openapi.json` 仍暴露（框架级路由，未经端点函数）。注：事后置空 `openapi_url` 会使 /docs 触发 500（TypeError），必须 ASGI 层拦截 | 纯 ASGI 中间件 404（避免 BaseHTTPMiddleware 对 SSE 流的影响）；未配置 key 时文档保持可用 |
+| R7-5 | ✅ 已驳回 | mmipkg_tool.py:587 | 有验证者主张「反斜杠文件名在 Windows 上仍可穿越」——事实性颠倒：ntpath.basename 同时按 `/` 和 `\` 切分故 Windows 侧被拒，POSIX 侧纯反斜杠名为目录内字面文件名，任何平台均无法越界（2/2 怀疑者一致驳回） | 无需处置；守卫仍显式拒绝 `\` 以绝后患 |
+| R7-6 | ⚠️ 功能缺陷（非安全） | scripts/mmipkg_tool.py:56 | 工具整体不可运行：从 `src.common.database.database` 导入 `db`（不存在，持久层早已迁移 SQLModel 会话制）、以 peewee 风格使用 `Emoji.get_or_none/create`（`database_model.py` 已无任何 ORM Emoji 类）。导入期即 ImportError——第六轮 S1 整改守护的是当前无法到达的代码路径 | 本轮不改（属功能迁移/废弃决策）：建议迁移至现行持久层或移除工具；在修复前其安全修复仅为纸面生效 |
+
+### 15.4 验证证据
+
+- 网关冒烟（TestClient）：无鉴权头 401 / 小写 `bearer` 通过鉴权进入下游 / 错误 key 401 / chat 端点同样受保护 / 开启鉴权时 docs 端点 404 / 未配置 key 时 openapi.json 200。
+- manifest 守卫冒烟：`../../etc/passwd`、`a/b.png`、`..\..\evil.png`、`.`、`..`、空串、NUL 共 7 例全部 ValueError 中止导入。
+- 回归：`pytests/chat_test/test_expression_vector_index.py` 25 passed；ruff 对 4 个改动文件零告警。
+
+### 15.5 结论
+
+**通过**。R7-1/R7-2 已当场补齐，R7-3/R7-4 加固落地，R7-5 驳回，R7-6 作为功能性遗留单列待决策。已审基线更新为 `c7a23699d`。

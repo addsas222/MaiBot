@@ -425,7 +425,6 @@ def write_index(
         CLUSTER_STATE_STABLE,
         FULL_RECLUSTER_CHANGE_RATIO,
     )
-    from src.common.database.database import DATABASE_URL
 
     output_json.parent.mkdir(parents=True, exist_ok=True)
     vectors_path = output_json.with_suffix(".npz")

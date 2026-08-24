@@ -584,7 +584,7 @@ class MMIPKGUnpacker:
         # 发现恶意文件名时中止整个导入，而不是按单条错误继续部分导入
         for item in items:
             fn = item.get("fn", "")
-            if fn and (os.path.basename(fn) != fn or fn in {".", ".."} or "\x00" in fn):
+            if not fn or "/" in fn or "\\" in fn or fn in {".", ".."} or "\x00" in fn:
                 raise ValueError(f"表情包 manifest 含非法文件名: {fn!r}，已中止导入以防路径穿越")
         try:
             imported_count = 0
@@ -658,6 +658,13 @@ class MMIPKGUnpacker:
                                     filename = f"{base}_{counter}{ext}"
                                     file_path = os.path.join(output_dir, filename)
                                     counter += 1
+
+                            # 防御性校验（第七轮审计 S1 加固）：拒绝经由预置符号链接写出目录外
+                            if os.path.islink(file_path):
+                                console.print(f"[red]错误: 目标路径为符号链接，已跳过 (item {idx})[/red]")
+                                error_count += 1
+                                progress.advance(task)
+                                continue
 
                             with open(file_path, "wb") as img_file:
                                 img_file.write(img_bytes)
