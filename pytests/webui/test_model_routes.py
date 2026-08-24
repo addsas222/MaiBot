@@ -73,6 +73,7 @@ def build_async_client_factory(
             url: str,
             headers: dict[str, Any] | None = None,
             params: dict[str, Any] | None = None,
+            **_: Any,
         ) -> FakeResponse:
             calls.append(
                 {
@@ -97,7 +98,8 @@ async def test_test_provider_connection_uses_query_api_key_for_gemini(
         responses=[FakeResponse(200), FakeResponse(200)],
         calls=calls,
     )
-    monkeypatch.setattr(model_routes.httpx, "AsyncClient", fake_client_class)
+    # 生产代码使用进程级共享客户端，直接注入实例而非构造参数
+    monkeypatch.setattr(model_routes, "get_webui_http_client", lambda: fake_client_class())
 
     result = await model_routes.test_provider_connection(
         base_url="https://generativelanguage.googleapis.com/v1beta",
@@ -133,7 +135,8 @@ async def test_test_provider_connection_uses_bearer_auth_for_openai_compatible(
         responses=[FakeResponse(200), FakeResponse(200)],
         calls=calls,
     )
-    monkeypatch.setattr(model_routes.httpx, "AsyncClient", fake_client_class)
+    # 生产代码使用进程级共享客户端，直接注入实例而非构造参数
+    monkeypatch.setattr(model_routes, "get_webui_http_client", lambda: fake_client_class())
 
     result = await model_routes.test_provider_connection(
         base_url="https://example.com/v1",

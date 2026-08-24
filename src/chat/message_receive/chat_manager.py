@@ -261,7 +261,9 @@ class ChatManager:
     def save_all_sessions(self):
         """将内存中的全部会话记录保存到数据库"""
         try:
-            for session in self.sessions.values():
+            # 该方法经 to_thread 在工作线程执行，事件循环线程可能并发增删会话，
+            # 先取快照避免迭代期间字典变更导致 RuntimeError
+            for session in list(self.sessions.values()):
                 self._save_session(session)
             logger.info(f"共 {len(self.sessions)} 个会话已经保存到数据库中")
         except Exception as e:

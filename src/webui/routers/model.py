@@ -729,6 +729,15 @@ async def _test_provider_connection(
     return result
 
 
+@router.get("/failure-stats")
+async def get_model_failure_stats(force_refresh: bool = Query(False, description="强制刷新缓存")):
+    """按模型聚合 LLM 请求快照的故障数据（重试后成功/最终失败/失败率）。"""
+
+    from src.webui.services.model_failure_stats import get_model_failure_stats
+
+    return {"success": True, **get_model_failure_stats(force_refresh=force_refresh)}
+
+
 @router.get("/test-connection")
 async def test_provider_connection(
     base_url: str = Query(..., description="提供商的基础 URL"),

@@ -441,6 +441,27 @@ export async function testProviderConnection(providerName: string): Promise<Test
   })
 }
 
+/** 模型故障率统计（基于 LLM 请求快照聚合） */
+export interface ModelFailureStat {
+  model: string
+  total: number
+  retried_ok: number
+  final_failed: number
+  fail_rate: number
+  last_seen?: string
+}
+
+export async function getModelFailureStats(forceRefresh = false): Promise<{
+  success: boolean
+  models: ModelFailureStat[]
+  scanned: number
+}> {
+  return backendApi.get('/api/webui/models/failure-stats', {
+    query: forceRefresh ? { force_refresh: true } : undefined,
+    errorMessage: '获取模型故障率统计失败',
+  })
+}
+
 /**
  * 测试单个模型的文本、tool call 与可选视觉能力
  * @param modelName 模型名称

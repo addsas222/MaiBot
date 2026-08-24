@@ -80,7 +80,7 @@ import { HelpTooltip } from '@/components/ui/help-tooltip'
 import { RestartOverlay } from '@/components/restart-overlay'
 import { RestartProvider, useRestart } from '@/lib/restart-context'
 import { ExtraParamsDialog } from '@/components/ui/extra-params-dialog'
-import { TaskConfigCard, ModelTable, ModelCardList } from './model/components'
+import { TaskConfigCard, ModelTable, ModelCardList, ModelFailureStats } from './model/components'
 import { TASK_CONFIGS } from './model/constants'
 import { useModelTour, useModelFetcher, useModelConfig } from './model/hooks'
 import {
@@ -881,6 +881,7 @@ function ModelConfigPageContent() {
                 </div>
               </div>
             )}
+            <ModelFailureStats />
             <ModelCardList
               paginatedModels={visibleModels}
               allModels={models}

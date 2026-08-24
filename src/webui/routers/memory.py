@@ -318,8 +318,9 @@ def _get_chat_name(chat_session: ChatSession, latest_messages: dict[str, dict[st
     try:
         if name := _chat_manager.get_session_name(chat_id):
             return name
-    except Exception:
-        pass
+    except Exception as exc:
+        # 会话名获取失败不阻断时间线渲染，但需留痕便于排查显示为空的个案
+        logger.debug(f"获取会话名失败 chat_id={chat_id}: {exc}")
 
     latest_message = latest_messages.get(chat_id)
     if chat_session.group_id:

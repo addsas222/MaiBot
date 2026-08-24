@@ -88,15 +88,9 @@ class MCPHostServerService:
     def _build_app(server_config: "MCPHostServerConfig") -> Any:
         """构建并注册全部 MCP 工具。"""
 
-        from mcp.server.fastmcp import FastMCP
+        from mcp.server.mcpserver import MCPServer
 
-        app = FastMCP(
-            name=MCP_SERVER_NAME,
-            host=server_config.host,
-            port=server_config.port,
-            streamable_http_path=MCP_SERVER_PATH,
-            log_level="WARNING",
-        )
+        app = MCPServer(name=MCP_SERVER_NAME)
 
         from .tools_chat import register_chat_tools
         from .tools_config import register_config_tools
@@ -107,7 +101,12 @@ class MCPHostServerService:
         register_status_tools(app)
         register_config_tools(app)
         register_memory_tools(app)
-        return app
+
+        # 工具注册完成后再构建 ASGI 应用，确保会话管理器看到全部工具
+        return app.streamable_http_app(
+            streamable_http_path=MCP_SERVER_PATH,
+            host=server_config.host,
+        )
 
     @staticmethod
     def _wrap_auth(app: Any, server_config: "MCPHostServerConfig") -> Any:

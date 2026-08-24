@@ -5695,6 +5695,21 @@ class MCPServerItemConfig(ConfigBase):
         return super().model_post_init(context)
 
 
+class MCPHostServerConfig(ConfigBase):
+    """麦麦进程内 MCP 宿主服务器（Streamable HTTP）配置。"""
+
+    enable: bool = Field(
+        default=False,
+        json_schema_extra={"label": {"zh_CN": "启用 MCP 宿主服务器"}, "x-widget": "switch"},
+    )
+    """是否在麦麦进程内启动 MCP 服务器供外部客户端连接。"""
+
+    host: str = Field(default="127.0.0.1", json_schema_extra={"label": {"zh_CN": "监听地址"}})
+    port: int = Field(default=8765, ge=1, le=65535, json_schema_extra={"label": {"zh_CN": "监听端口"}})
+    auth_token: str = Field(default="", json_schema_extra={"label": {"zh_CN": "访问令牌"}, "x-widget": "password"})
+    """为空表示不鉴权；非空时客户端需携带 Authorization: Bearer <token>。"""
+
+
 class MCPConfig(ConfigBase):
     """MCP 总配置。"""
 
@@ -5714,6 +5729,12 @@ class MCPConfig(ConfigBase):
         json_schema_extra={"label": {"zh_CN": "客户端高级能力"}, "advanced": True},
     )
     """麦麦作为 MCP 客户端时声明的能力。"""
+
+    server: MCPHostServerConfig = Field(
+        default_factory=MCPHostServerConfig,
+        json_schema_extra={"label": {"zh_CN": "宿主服务器"}, "advanced": True},
+    )
+    """麦麦进程内 MCP 服务器（供 opencode 等外部客户端连接）。"""
 
     servers: list[MCPServerItemConfig] = Field(
         default_factory=lambda: [],
@@ -6050,6 +6071,8 @@ class PluginRuntimeConfig(ConfigBase):
 
 class SkillConfig(ConfigBase):
     """技能（Skills）配置类"""
+
+    __ui_parent__ = "maisaka"
 
     directories: list[str] = Field(
         default_factory=lambda: ["data/skills"],

@@ -6,10 +6,10 @@ from pydantic import BaseModel, Field
 class FetchRawFileRequest(BaseModel):
     """获取 Raw 文件请求"""
 
-    owner: str = Field(..., description="仓库所有者", example="MaiM-with-u")
-    repo: str = Field(..., description="仓库名称", example="plugin-repo")
-    branch: str = Field(..., description="分支名称", example="main")
-    file_path: str = Field(..., description="文件路径", example="plugin_details.json")
+    owner: str = Field(..., description="仓库所有者", json_schema_extra={"example": "MaiM-with-u"})
+    repo: str = Field(..., description="仓库名称", json_schema_extra={"example": "plugin-repo"})
+    branch: str = Field(..., description="分支名称", json_schema_extra={"example": "main"})
+    file_path: str = Field(..., description="文件路径", json_schema_extra={"example": "plugin_details.json"})
     mirror_id: Optional[str] = Field(None, description="指定镜像源 ID")
     custom_url: Optional[str] = Field(None, description="自定义完整 URL")
 
@@ -28,10 +28,10 @@ class FetchRawFileResponse(BaseModel):
 class CloneRepositoryRequest(BaseModel):
     """克隆仓库请求"""
 
-    owner: str = Field(..., description="仓库所有者", example="MaiM-with-u")
-    repo: str = Field(..., description="仓库名称", example="plugin-repo")
+    owner: str = Field(..., description="仓库所有者", json_schema_extra={"example": "MaiM-with-u"})
+    repo: str = Field(..., description="仓库名称", json_schema_extra={"example": "plugin-repo"})
     target_path: str = Field(..., description="目标路径（相对于插件目录）")
-    branch: Optional[str] = Field(None, description="分支名称", example="main")
+    branch: Optional[str] = Field(None, description="分支名称", json_schema_extra={"example": "main"})
     mirror_id: Optional[str] = Field(None, description="指定镜像源 ID")
     custom_url: Optional[str] = Field(None, description="自定义克隆 URL")
     depth: Optional[int] = Field(None, description="克隆深度（浅克隆）", ge=1)
@@ -70,10 +70,10 @@ class AvailableMirrorsResponse(BaseModel):
 class AddMirrorRequest(BaseModel):
     """添加镜像源请求"""
 
-    id: str = Field(..., description="镜像源 ID", example="custom-mirror")
-    name: str = Field(..., description="镜像源名称", example="自定义镜像源")
-    raw_prefix: str = Field(..., description="Raw 文件前缀", example="https://example.com/raw")
-    clone_prefix: str = Field(..., description="克隆前缀", example="https://example.com/clone")
+    id: str = Field(..., description="镜像源 ID", json_schema_extra={"example": "custom-mirror"})
+    name: str = Field(..., description="镜像源名称", json_schema_extra={"example": "自定义镜像源"})
+    raw_prefix: str = Field(..., description="Raw 文件前缀", json_schema_extra={"example": "https://example.com/raw"})
+    clone_prefix: str = Field(..., description="克隆前缀", json_schema_extra={"example": "https://example.com/clone"})
     enabled: bool = Field(True, description="是否启用")
     priority: Optional[int] = Field(None, description="优先级")
 

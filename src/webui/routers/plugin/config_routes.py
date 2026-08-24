@@ -45,8 +45,8 @@ def _to_builtin_data(obj: Any) -> Any:
     if hasattr(obj, "unwrap"):
         try:
             obj = obj.unwrap()
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug(f"unwrap 失败，按原对象继续转换: {exc}")
 
     if isinstance(obj, dict):
         return {str(key): _to_builtin_data(value) for key, value in obj.items()}

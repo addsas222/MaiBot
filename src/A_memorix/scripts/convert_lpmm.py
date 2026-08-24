@@ -190,14 +190,21 @@ class LPMMConverter:
             raise ValueError("输入目录至少需要 paragraph.parquet 或 entity.parquet")
 
     def _load_plugin_config(self) -> Dict[str, Any]:
-        config_path = DEFAULT_CONFIG_PATH
-        if not config_path.exists():
-            raise FileNotFoundError(f"A_Memorix 配置不存在，无法确定 Embedding 指纹: {config_path}")
-        with open(config_path, "r", encoding="utf-8") as f:
-            parsed = tomlkit.load(f)
-        if not isinstance(parsed, dict):
-            raise TypeError(f"A_Memorix 配置根节点必须是对象: {config_path}")
-        return dict(parsed)
+        # 优先读取独立 a_memorix.toml；缺失时回退主配置 bot_config.toml 的
+        # [a_memorix] 段（与主程序 AMemorixConfig 同源）；两者皆无则返回空字典，
+        # 由调用方使用安全缺省（模型 auto / 维度取 --dim / explicit 请求模式）。
+        candidate_paths = [DEFAULT_CONFIG_PATH, resolve_repo_path("config/bot_config.toml")]
+        for config_path in candidate_paths:
+            if not config_path.exists():
+                continue
+            with open(config_path, "r", encoding="utf-8") as f:
+                parsed = tomlkit.load(f)
+            if isinstance(parsed, dict):
+                if str(config_path).endswith("bot_config.toml"):
+                    parsed = parsed.get("a_memorix", {})
+                return dict(parsed) if isinstance(parsed, dict) else {}
+        logger.warning("未找到 a_memorix.toml 或 bot_config.toml，使用默认 Embedding 配置")
+        return {}
 
     def _load_embedding_fingerprint(self) -> Dict[str, Any]:
         cfg = self._load_plugin_config()

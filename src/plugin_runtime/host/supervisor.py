@@ -9,6 +9,9 @@ import os
 import sys
 import time
 
+if sys.platform != "win32":
+    import resource
+
 from src.common.logger import get_logger
 from src.common.shutdown import is_shutdown_requested
 from src.config.config import global_config
@@ -89,6 +92,29 @@ if TYPE_CHECKING:
 _PROJECT_ROOT = Path(__file__).resolve().parents[3]
 _RUNNER_DEBUG_FILE_PATH = _PROJECT_ROOT / "logs" / "plugin_runtime_debug" / "runner_rpc_debug.jsonl"
 _ADAPTER_PLUGIN_TYPE = "adapter"
+
+# Runner 子进程资源上限：防失控插件拖垮整机。
+# ponytail: 常量即上限（虚拟内存 4GiB / CPU 1800s），需要按组差异化配置时再进 runtime_config
+_RUNNER_RLIMIT_AS_BYTES = 4 * 1024 * 1024 * 1024
+_RUNNER_RLIMIT_CPU_SECONDS = 1800
+
+
+def _apply_runner_resource_limits() -> None:
+    """在 Runner 进程 exec 前施加资源上限（仅 POSIX，父进程 fork 线程间调用）。"""
+
+    resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
+    resource.setrlimit(
+        resource.RLIMIT_CPU,
+        (_RUNNER_RLIMIT_CPU_SECONDS, _RUNNER_RLIMIT_CPU_SECONDS),
+    )
+    try:
+        soft, hard = resource.getrlimit(resource.RLIMIT_AS)
+        target = min(_RUNNER_RLIMIT_AS_BYTES, hard) if hard != resource.RLIM_INFINITY else _RUNNER_RLIMIT_AS_BYTES
+        resource.setrlimit(resource.RLIMIT_AS, (target, target))
+    except (ValueError, OSError):
+        # 部分平台对 RLIMIT_AS 支持受限，失败不阻断启动
+        pass
+
 _RUNTIME_GROUP_LOGGER_NAMES: Dict[str, str] = {
     "builtin": "plugin_runtime.group.core",
     "third_party": "plugin_runtime.group.extension",
@@ -1800,6 +1826,10 @@ class PluginRunnerSupervisor:
             env["PYTHONPATH"] = local_sdk_pythonpath
             self._logger.info(f"Runner 将优先使用本地插件 SDK: {env.get(ENV_LOCAL_PLUGIN_SDK_PATH)}")
 
+        spawn_kwargs: dict[str, Any] = {}
+        if sys.platform != "win32":
+            spawn_kwargs["preexec_fn"] = _apply_runner_resource_limits
+
         self._runner_process = await asyncio.create_subprocess_exec(
             sys.executable,
             "-m",
@@ -1807,6 +1837,7 @@ class PluginRunnerSupervisor:
             env=env,
             stdout=asyncio.subprocess.DEVNULL,
             stderr=asyncio.subprocess.PIPE,
+            **spawn_kwargs,
         )
 
         if self._runner_process.stderr is not None:

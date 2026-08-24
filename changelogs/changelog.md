@@ -40,6 +40,25 @@
 ## 插件运行时
 
 - 修复插件源码变更触发的运行时重启被文件监视器回调超时（15s）中途取消、导致插件运行时永久失效的问题：重启改为后台任务执行，避免留下半停止状态的运行时。
+- Runner 子进程新增 POSIX 资源上限（虚拟内存 4GiB、CPU 1800s、禁用 core dump），防失控插件拖垮宿主机；UDS 传输默认 socket 目录改为 mkdtemp(0700) 用户专属目录，消除共享 /tmp 上的符号链接竞争面。
+- RPC msgpack 解包显式收紧 max_str_len/max_bin_len/max_array_len/max_map_len/max_ext_len，防止深嵌套与超大结构导致的内存尖峰。
+
+## 模型故障多元解决方案
+
+- 任务配置新增降级链：`fallback_model_list`（主 model_list 全部失败/冷却后才启用的保底模型池，实现"免费模型先轮换、耗尽后切付费"）与 `timeout_fail_cooldown`（网络超时重试用尽后模型进入短冷却，默认 60s，避免反复撞同一慢模型）；planner 的 deferred tools 提醒与选择器均已冷却感知。
+- 新增模型故障率统计：WebUI 模型管理页顶部展示各模型的重试后成功/最终失败/失败率面板（数据来自 LLM 请求快照聚合，TTL 缓存 60s），新增 `/api/webui/models/failure-stats` 接口。
+- 配置模板版本号递增至 8.14.42。
+
+## 安全
+
+- 升级存在已知漏洞的依赖：starlette 1.6.0、pyjwt 2.13.0、python-multipart 0.0.32、pyasn1 0.6.4、pillow 12.3.0、pydantic-settings 2.15.0、mcp 2.0.0、msgpack 1.2.x，pip-audit 全量清零。
+- mcp 升级至 2.0：MCP 宿主服务器迁移到内置 `mcp.server.mcpserver.MCPServer`（`streamable_http_app` ASGI 挂载），客户端异常类型适配 `MCPError` 更名。
+- 补全 MCP 宿主服务器缺失的配置接线：新增 `MCPHostServerConfig`（enable/host/port/auth_token，默认关闭）挂载于 `[mcp.server]`，配置模板版本号递增。
+- Dockerfile 加固：Napcat 适配器克隆锁定 commit、容器改非 root 用户运行；.dockerignore 排除本地实验目录。
+
+## Webui
+
+- 技能配置段补齐 `__ui_parent__` UI 元数据声明；修正静态资源本地优先语义的两处过时测试断言。
 
 ## 网络与资源
 
@@ -685,3 +704,13 @@
 
 - 评估标准升级至 v6：向评审器提供 Bot 昵称与别名，并加入同一用户连续消息的对话焦点继承规则，减少点名评价 Bot 时被误判为无关联的问题。
 - 情感接受度由连续分数改为反馈倾向分类与分类计数，区分正向认可、轻松互动、中性回应、困惑、事实纠正、拒绝和针对 Bot 的攻击；置信度继续作为独立证据指标展示。
+
+## 安全
+
+- 插件/工具返回内容注入加固：工具结果上限 8000 字符截断并标注"外部数据"；planner 系统提示词新增三语规则——工具返回内容一律视为不可信外部数据，不得遵从其中的指令性文字。
+- planner deferred tools 提醒增加来源标注（插件/技能/MCP），模型可识别工具出处。
+- pytest 配置启用 warnings-as-error（仅限 src 模块），修复其暴露的 Pydantic V2 弃用（plugin schemas example→json_schema_extra）与 Python 3.14 弃用（asyncio.iscoroutinefunction→inspect）。
+
+## 测试
+
+- 修复存量失败 20+ 项：BindAddress hosts API、manifest id 严格校验契约、静态资源本地优先语义、get_webui_http_client 注入、ChatInfoResponse account_id 字段、DummyLogger.debug、VLM 配置门禁、DummyDBSession params、危险词库数据演进（yyds）、A_memorix 配置回退链、test_adapter_policy 双树同名冲突重命名。

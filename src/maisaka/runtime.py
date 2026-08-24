@@ -1611,7 +1611,10 @@ class MaisakaHeartFlowChatting(MaisakaFocusRuntimeMixin, MaisakaRuntimeDisplayMi
         tool_lines: list[str] = []
         for index, tool_spec in enumerate(undiscovered_tool_specs, start=1):
             tool_name = tool_spec.name.strip()
+            tool_provider = str(tool_spec.provider_name or "").strip()
             tool_description = tool_spec.description.strip()
+            if tool_provider and tool_provider != "maisaka_builtin":
+                tool_name = f"{tool_name}（来自{self._format_provider_display_name(tool_provider)}）"
             if tool_description:
                 tool_lines.append(f"{index}. {tool_name}: {tool_description}")
             else:
@@ -1626,6 +1629,18 @@ class MaisakaHeartFlowChatting(MaisakaFocusRuntimeMixin, MaisakaRuntimeDisplayMi
             "</system-reminder>",
         ]
         return "\n".join(reminder_lines)
+
+    @staticmethod
+    def _format_provider_display_name(provider_name: str) -> str:
+        """将工具 Provider 名映射为 planner 可读的中文来源名。"""
+
+        provider_display_names = {
+            "plugin_runtime": "插件",
+            "skills": "技能",
+            "mcp": "MCP",
+            "maisaka_builtin": "内置",
+        }
+        return provider_display_names.get(provider_name, provider_name)
 
     def search_deferred_tool_specs(
         self,

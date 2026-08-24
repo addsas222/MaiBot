@@ -427,6 +427,26 @@ class TaskConfig(ConfigBase):
     )
     """阶梯冷却封顶时长（秒）：模型连续因 429 进入冷却时，冷却时长从 cooldown_seconds 起逐级翻倍，最高不超过该值；设为 0 或小于等于 cooldown_seconds 时退化为固定冷却"""
 
+    fallback_model_list: list[str] = Field(
+        default_factory=list,
+        json_schema_extra={
+            "x-widget": "custom",
+            "advanced": True,
+        },
+    )
+    """保底模型列表：主 model_list 全部失败（重试用尽/冷却/隔离）后才启用的模型池，用于免费模型耗尽后切换到付费稳定模型；留空表示无保底"""
+
+    timeout_fail_cooldown: int = Field(
+        default=60,
+        ge=0,
+        json_schema_extra={
+            "x-widget": "input",
+            "step": 1,
+            "advanced": True,
+        },
+    )
+    """网络超时失败冷却（秒）：模型因请求超时（APITimeoutError）用尽重试后进入的冷却时长，避免反复撞同一慢模型；设为 0 表示超时不进冷却"""
+
 
 class ModelTaskConfig(ConfigBase):
     """模型配置类"""

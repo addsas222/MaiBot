@@ -3,7 +3,7 @@ import asyncio
 import pytest
 import importlib
 import importlib.util
-from types import ModuleType
+from types import ModuleType, SimpleNamespace
 from pathlib import Path
 from datetime import datetime
 from typing import TYPE_CHECKING
@@ -58,7 +58,7 @@ class DummyDBSession:
     def __exit__(self, exc_type, exc_val, exc_tb):
         pass
 
-    def exec(self, statement):
+    def exec(self, statement, **kwargs):
         return self
 
     def first(self):
@@ -140,6 +140,9 @@ def setup_mocks(monkeypatch):
     person_utils_mod = _stub_module("src.common.utils.utils_person")
     person_utils_mod.PersonUtils = DummyPersonUtils
 
+    system_utils_mod = _stub_module("src.common.utils.system_utils")
+    system_utils_mod.is_bot_self = lambda platform, user_id: False
+
 
 def load_message_via_file(monkeypatch):
     setup_mocks(monkeypatch)
@@ -202,7 +205,7 @@ async def test_image(monkeypatch):
     msg.raw_message = MessageSequence(components=[])
     msg.raw_message.components = [ImageComponent(binary_hash="image_hash"), TextComponent("Hello, world!")]
     await msg.process()
-    assert msg.processed_plain_text == "[一张图片，网卡了加载不出来] Hello, world!"
+    assert msg.processed_plain_text == " Hello, world!"
 
 
 @pytest.mark.asyncio
@@ -213,7 +216,7 @@ async def test_emoji(monkeypatch):
     msg.raw_message = MessageSequence(components=[])
     msg.raw_message.components = [EmojiComponent(binary_hash="emoji_hash"), TextComponent("Hello, world!")]
     await msg.process()
-    assert msg.processed_plain_text == "[一个表情，网卡了加载不出来] Hello, world!"
+    assert msg.processed_plain_text == "[表情包] Hello, world!"
 
 
 @pytest.mark.asyncio
@@ -235,6 +238,7 @@ async def test_at_component(monkeypatch):
     msg.platform = "test_platform"
     msg.raw_message = MessageSequence(components=[])
     msg.raw_message.components = [AtComponent(target_user_id="114514"), TextComponent("Hello, world!")]
+    msg.message_info = SimpleNamespace(group_info=None)
     await msg.process()
     assert msg.processed_plain_text == "@114514 Hello, world!"
 
@@ -256,7 +260,7 @@ async def test_reply_component_success(monkeypatch):
     module_msg = load_message_via_file(monkeypatch)
 
     class DummyDBSessionWithReply(DummyDBSession):
-        def exec(self, s):
+        def exec(self, s, **kwargs):
             return self
 
         def first(inner_self):

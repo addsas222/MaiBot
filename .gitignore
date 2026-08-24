@@ -386,3 +386,7 @@ agentlite/
 /qwen_mai/
 /MaiMaiFocusPet-Godot/
 start_mac.command
+
+# 本地实验目录与第三方克隆，不跟踪
+/ChatAPI/
+/mcp-server/

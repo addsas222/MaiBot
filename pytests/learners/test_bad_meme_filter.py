@@ -91,13 +91,12 @@ def test_is_bad_meme_regex_hits(text: str) -> None:
 
     match = is_bad_meme(text)
     assert match is not None
-    assert match.category in {"低俗辱骂", "性低俗", "恶意诅咒", "歧视攻击", "烂俗词库"}
+    assert match.category in {"低俗辱骂", "性低俗", "恶意诅咒", "歧视攻击", "危险词库"}
 
 
 @pytest.mark.parametrize(
     "text",
     [
-        "yyds",
         "牛批",
         "nb",
         "内卷",
@@ -120,8 +119,8 @@ def test_filter_bad_meme_jargons_keeps_normal_entries() -> None:
 
     entries = [("yyds", "1"), ("泰裤辣", "2"), ("内卷", "3"), ("nmsl", "4")]
     kept, rejected = filter_bad_meme_jargons(entries, session_id="test")
-    assert kept == [("yyds", "1"), ("内卷", "3")]
-    assert [item[0] for item in rejected] == ["泰裤辣", "nmsl"]
+    assert kept == [("内卷", "3")]
+    assert [item[0] for item in rejected] == ["yyds", "泰裤辣", "nmsl"]
 
 
 def test_filter_bad_meme_expressions_filters_situation_and_style() -> None:

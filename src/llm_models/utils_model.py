@@ -110,8 +110,12 @@ class LLMOrchestrator:
         self.request_type = request_type
         self.session_id = str(session_id or "").strip()
         self.model_for_task = self._get_task_config_or_raise()
+        # 使用量记录需覆盖保底模型，否则降级链启用时它们不会出现在候选池
+        all_task_models = list(dict.fromkeys(
+            [*self.model_for_task.model_list, *(self.model_for_task.fallback_model_list or [])]
+        ))
         self.model_usage: Dict[str, Tuple[int, int, int]] = {
-            model: (0, 0, 0) for model in self.model_for_task.model_list
+            model: (0, 0, 0) for model in all_task_models
         }
         """模型使用量记录，用于进行负载均衡，对应为(total_tokens, penalty, usage_penalty)，惩罚值是为了能在某个模型请求不给力或正在被使用的时候进行调整"""
 
@@ -153,8 +157,9 @@ class LLMOrchestrator:
         latest = self._get_task_config_or_raise()
         if latest is not self.model_for_task:
             self.model_for_task = latest
-        if list(self.model_usage.keys()) != latest.model_list:
-            self.model_usage = {model: self.model_usage.get(model, (0, 0, 0)) for model in latest.model_list}
+        all_models = list(dict.fromkeys([*latest.model_list, *(latest.fallback_model_list or [])]))
+        if list(self.model_usage.keys()) != all_models:
+            self.model_usage = {model: self.model_usage.get(model, (0, 0, 0)) for model in all_models}
         return self.model_for_task
 
     def _check_slow_request(self, time_cost: float, model_name: str) -> None:
@@ -831,29 +836,46 @@ class LLMOrchestrator:
 
         strategy = self.model_for_task.selection_strategy.strip().lower()
 
+        # 主列表优先：主 model_list 全部失败（重试耗尽/冷却/隔离）后才启用 fallback 保底池，
+        # 实现"免费模型先轮换，全部不可用再切付费"的降级链。
+        main_pool = [
+            model_name
+            for model_name in self.model_for_task.model_list
+            if model_name in available_models
+        ]
+        fallback_pool = [
+            model_name
+            for model_name in (self.model_for_task.fallback_model_list or [])
+            if model_name in available_models and model_name not in self.model_for_task.model_list
+        ]
+        selection_pool = main_pool if main_pool else fallback_pool
+        if not selection_pool:
+            # 主列表与保底列表均不可用（例如全部处于冷却）时，退回全部可用模型兜底
+            selection_pool = list(available_models.keys())
+
         if degraded_model_name:
             selected_model_name = degraded_model_name
         elif requested_model_name:
             selected_model_name = requested_model_name
         elif strategy == "random":
             # 随机选择策略
-            selected_model_name = random.choice(list(available_models.keys()))
+            selected_model_name = random.choice(selection_pool)
         elif strategy == "sequential":
             # 顺序优先策略：按照配置顺序选择第一个尚未失败的模型。
             selected_model_name = next(
-                model_name for model_name in self.model_for_task.model_list if model_name in available_models
+                model_name for model_name in selection_pool if model_name in available_models
             )
         elif strategy == "balance":
             # 负载均衡策略：根据总tokens和惩罚值选择
             selected_model_name = min(
-                available_models,
+                selection_pool,
                 key=lambda k: available_models[k][0] + available_models[k][1] * 300 + available_models[k][2] * 1000,
             )
         else:
             # 默认使用负载均衡策略
             logger.warning(f"未知的选择策略 '{strategy}'，使用默认的负载均衡策略")
             selected_model_name = min(
-                available_models,
+                selection_pool,
                 key=lambda k: available_models[k][0] + available_models[k][1] * 300 + available_models[k][2] * 1000,
             )
 
@@ -1036,6 +1058,12 @@ class LLMOrchestrator:
                     logger.error(
                         f"任务 '{task_display}' 的模型 '{model_info.name}' 在网络错误重试用尽后仍然失败。{original_error_info}"
                     )
+                    # 超时类网络错误：模型进入短冷却，避免反复撞同一慢模型
+                    if self.model_for_task.timeout_fail_cooldown > 0 and _is_request_timeout_error(e):
+                        model_cooldown_registry.enter_cooldown(
+                            model_info.name,
+                            self.model_for_task.timeout_fail_cooldown,
+                        )
                     raise ModelAttemptFailed(f"模型 '{model_info.name}' 重试耗尽", original_exception=e) from e
 
                 logger.warning(
@@ -1252,7 +1280,10 @@ class LLMOrchestrator:
             LLMExecutionResult: 单次模型执行结果对象。
         """
         failed_models_this_request: Set[str] = set()
-        max_attempts = 1 if str(model_name or "").strip() else len(self.model_for_task.model_list)
+        fallback_model_list = [m for m in (self.model_for_task.fallback_model_list or []) if m]
+        max_attempts = 1 if str(model_name or "").strip() else len(self.model_for_task.model_list) + len(
+            [m for m in fallback_model_list if m not in self.model_for_task.model_list]
+        )
         last_exception: Optional[Exception] = None
         last_model_name = ""
         trace_context = RequestTraceContext(
@@ -1408,6 +1439,21 @@ class LLMOrchestrator:
             return f"{detail_text}{snapshot_info}"
 
         return ""
+
+
+def _is_request_timeout_error(e: Exception) -> bool:
+    """判断异常链底层是否为请求超时（APITimeoutError 及其 SDK 等价类型）。
+
+    网络错误在客户端层被包装为 NetworkConnectionError，原始异常挂在 __cause__ 上；
+    这里用类型名判断，避免对具体 SDK 类型的直接依赖。
+    """
+
+    cause = e.__cause__
+    while cause is not None:
+        if type(cause).__name__ == "APITimeoutError":
+            return True
+        cause = cause.__cause__
+    return "timed out" in str(e).lower() or "timeout" in str(e).lower()
 
 
 class TempMethodsLLMUtils:

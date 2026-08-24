@@ -5,7 +5,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
 from io import BytesIO
-from typing import Any, Optional, Sequence
+from typing import Any, ClassVar, Optional, Sequence
 import base64
 import uuid
 
@@ -705,6 +705,10 @@ def build_model_output_context_messages(
 class ToolResultMessage(LLMContextMessage):
     """工具返回结果消息。"""
 
+    # 工具结果视为不可信外部数据：截断上限防上下文溢出与提示词注入
+    MAX_RESULT_CHARS: ClassVar[int] = 20000
+    _TRUNCATION_SUFFIX_TEMPLATE: ClassVar[str] = "\n...[内容过长已截断，仅展示前 {limit} 字符]"
+
     content: str
     timestamp: datetime
     tool_call_id: str
@@ -719,6 +723,11 @@ class ToolResultMessage(LLMContextMessage):
             raise ValueError("工具结果的调用 ID 不能为空")
         if not self.logical_turn_id or not self.logical_turn_id.strip():
             raise ValueError(f"工具结果必须具有 logical_turn_id: {self.tool_call_id}")
+        if len(self.content) > self.MAX_RESULT_CHARS:
+            self.content = (
+                self.content[: self.MAX_RESULT_CHARS]
+                + self._TRUNCATION_SUFFIX_TEMPLATE.format(limit=self.MAX_RESULT_CHARS)
+            )
 
     @property
     def role(self) -> str:

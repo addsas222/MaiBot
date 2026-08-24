@@ -42,14 +42,18 @@ class UDSTransportServer(TransportServer):
 
     def __init__(self, socket_path: Optional[Path] = None) -> None:
         if socket_path is None:
-            # 默认放在临时目录，使用 uuid 确保同一进程多实例不碰撞
+            # 默认在用户专属临时目录下生成，避免共享 /tmp 上的符号链接竞争
             import uuid
 
-            socket_path = Path(tempfile.gettempdir()) / f"maibot-plugin-{os.getpid()}-{uuid.uuid4().hex[:8]}.sock"
+            base_dir = Path(tempfile.mkdtemp(prefix="maibot-plugin-"))
+            base_dir.chmod(0o700)
+            socket_path = base_dir / f"{os.getpid()}-{uuid.uuid4().hex[:8]}.sock"
 
             # 如果路径超出 UDS 限制，回退到更短的路径
             if len(str(socket_path).encode()) > _UDS_PATH_MAX:
-                socket_path = Path("/tmp") / f"mb-{os.getpid()}-{uuid.uuid4().hex[:8]}.sock"
+                fallback_dir = Path(tempfile.gettempdir()) / "mbp"
+                fallback_dir.mkdir(mode=0o700, exist_ok=True)
+                socket_path = fallback_dir / f"{os.getpid()}-{uuid.uuid4().hex[:8]}.sock"
         if len(str(socket_path).encode()) > _UDS_PATH_MAX:
             raise OSError(f"UDS socket 路径过长 ({len(str(socket_path).encode())} > {_UDS_PATH_MAX} 字节): {socket_path}")
 

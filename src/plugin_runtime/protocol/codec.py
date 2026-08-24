@@ -58,7 +58,17 @@ class MsgPackCodec(Codec):
         return result
 
     def decode(self, data: bytes) -> Dict[str, Any]:
-        result = msgpack.unpackb(data, ext_hook=self._decode_ext_type, raw=False)
+        # 对端（Runner/插件进程）属于半可信边界，显式收紧解包限制防深嵌套与超大结构
+        result = msgpack.unpackb(
+            data,
+            ext_hook=self._decode_ext_type,
+            raw=False,
+            max_str_len=1 << 20,
+            max_bin_len=16 << 20,
+            max_array_len=10000,
+            max_map_len=10000,
+            max_ext_len=1 << 20,
+        )
         if not isinstance(result, dict):
             raise ValueError(f"期望解码为 dict，实际为 {type(result)}")
         return result

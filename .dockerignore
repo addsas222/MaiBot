@@ -23,3 +23,14 @@ mai_knowledge/
 depends-data/
 !depends-data/
 !depends-data/char_frequency.json
+# 本地实验/第三方项目，不进入镜像
+ChatAPI/
+mcp-server/
+plugins/
+tests/
+pytests/
+config/
+.omo/
+.opencode/
+.codegraph/
+docker-config/

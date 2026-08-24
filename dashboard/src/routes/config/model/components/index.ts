@@ -5,4 +5,5 @@
 export { TaskConfigCard } from './TaskConfigCard'
 export { ModelCardList } from './ModelCardList'
 export { ModelTable } from './ModelTable'
+export { ModelFailureStats } from './ModelFailureStats'
 export { Pagination } from './Pagination'

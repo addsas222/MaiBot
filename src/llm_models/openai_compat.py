@@ -1,7 +1,17 @@
 from dataclasses import dataclass, field
 from typing import Any, Mapping
+from urllib.parse import urlparse
 
 from src.config.model_configs import APIProvider, OpenAICompatibleAuthType
+
+# OpenCode zen 免费网关只放行 opencode CLI 客户端身份的请求，
+# 其余 User-Agent 一律按匿名客户端拒绝（429 FreeUsageLimitError）。
+# 版本号需跟随官方 CLI 大版本更新。
+OPENCODE_ZEN_HOSTNAME = "opencode.ai"
+OPENCODE_CLI_IDENTITY_HEADERS = {
+    "User-Agent": "opencode/latest/1.18.18/cli",
+    "x-opencode-client": "cli",
+}
 
 
 @dataclass(slots=True)
@@ -68,6 +78,10 @@ def build_openai_compatible_client_config(api_provider: APIProvider) -> OpenAICo
     default_headers = dict(api_provider.default_headers)
     default_query: dict[str, object] = dict(api_provider.default_query)
     client_api_key = api_provider.api_key
+    normalized_base_url = normalize_openai_base_url(api_provider.base_url)
+    hostname = (urlparse(normalized_base_url).hostname or "").lower()
+    if hostname == OPENCODE_ZEN_HOSTNAME or hostname.endswith(f".{OPENCODE_ZEN_HOSTNAME}"):
+        default_headers.update(OPENCODE_CLI_IDENTITY_HEADERS)
 
     if api_provider.auth_type == OpenAICompatibleAuthType.BEARER:
         if (

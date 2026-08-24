@@ -41,7 +41,7 @@ try:
     except ImportError:
         from mcp import StdioServerParameters  # type: ignore[attr-defined]
 
-    from mcp.shared.exceptions import McpError
+    from mcp.shared.exceptions import MCPError as McpError
 
     try:
         from .stdio_filter import tolerant_stdio_client

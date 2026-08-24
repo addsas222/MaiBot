@@ -103,7 +103,8 @@ def test_resolve_static_path_prefers_installed_dashboard_package(monkeypatch, tm
     assert resolved_path == package_dist
 
 
-def test_resolve_static_path_ignores_dashboard_dist_when_package_is_unavailable(monkeypatch, tmp_path) -> None:
+def test_resolve_static_path_prefers_local_dist_even_when_package_unavailable(monkeypatch, tmp_path) -> None:
+    """本地优先：仓库内存在最新构建时，pip 面板缺失不影响加载。"""
     dashboard_dist = tmp_path / "dashboard" / "dist"
     dashboard_dist.mkdir(parents=True)
     (dashboard_dist / "index.html").write_text("<html></html>", encoding="utf-8")
@@ -113,12 +114,13 @@ def test_resolve_static_path_ignores_dashboard_dist_when_package_is_unavailable(
     with patch.object(webui_app, "import_module", side_effect=ImportError):
         resolved_path = webui_app._resolve_static_path()
 
-    assert resolved_path is None
+    assert resolved_path == dashboard_dist
 
 
-def test_resolve_static_path_uses_package_even_when_dashboard_dist_exists(monkeypatch, tmp_path) -> None:
+def test_resolve_static_path_prefers_local_dist_over_package(monkeypatch, tmp_path) -> None:
     dashboard_dist = tmp_path / "dashboard" / "dist"
     dashboard_dist.mkdir(parents=True)
+    (dashboard_dist / "index.html").write_text("<html></html>", encoding="utf-8")
 
     package_dist = tmp_path / "site-packages" / "maibot_dashboard" / "dist"
     package_dist.mkdir(parents=True)
@@ -133,7 +135,7 @@ def test_resolve_static_path_uses_package_even_when_dashboard_dist_exists(monkey
     with patch.object(webui_app, "import_module", return_value=_DashboardModule()):
         resolved_path = webui_app._resolve_static_path()
 
-    assert resolved_path == package_dist
+    assert resolved_path == dashboard_dist
 
 
 def test_resolve_safe_static_file_path_allows_regular_static_file(tmp_path) -> None:

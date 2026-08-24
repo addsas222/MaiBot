@@ -222,7 +222,7 @@ def test_get_plugin_icon_rejects_manifest_declared_parent_path(client: TestClien
     assert response.status_code == 400
 
 
-def test_install_plugin_preserves_manifest_declared_id(client: TestClient, monkeypatch):
+def test_install_plugin_rejects_manifest_id_mismatch(client: TestClient, monkeypatch):
     class FakeGitMirrorService:
         async def clone_repository(self, **kwargs):
             target_path = kwargs["target_path"]
@@ -252,14 +252,12 @@ def test_install_plugin_preserves_manifest_declared_id(client: TestClient, monke
         },
     )
 
-    assert response.status_code == 200
-    plugin_path = support_module.resolve_installed_plugin_path("author.declared")
-    assert plugin_path is not None
-    manifest = json.loads((plugin_path / "_manifest.json").read_text(encoding="utf-8"))
-    assert manifest["id"] == "author.declared"
+    # 现行契约：manifest.id 必须与请求 plugin_id 一致，否则拒绝安装
+    assert response.status_code == 400
+    assert support_module.resolve_installed_plugin_path("author.declared") is None
 
 
-def test_install_plugin_backfills_missing_manifest_id(client: TestClient, monkeypatch):
+def test_install_plugin_rejects_missing_manifest_id(client: TestClient, monkeypatch):
     class FakeGitMirrorService:
         async def clone_repository(self, **kwargs):
             target_path = kwargs["target_path"]
@@ -288,11 +286,17 @@ def test_install_plugin_backfills_missing_manifest_id(client: TestClient, monkey
         },
     )
 
-    assert response.status_code == 200
-    plugin_path = support_module.resolve_installed_plugin_path("market.legacy")
-    assert plugin_path is not None
-    manifest = json.loads((plugin_path / "_manifest.json").read_text(encoding="utf-8"))
-    assert manifest["id"] == "market.legacy"
+    # 现行契约：缺失 id 的 manifest 直接拒绝，且克隆产物被清理
+    response2 = client.post(
+        "/api/webui/plugins/install",
+        json={
+            "plugin_id": "market.legacy",
+            "repository_url": "https://github.com/author/legacy",
+            "branch": "main",
+        },
+    )
+    assert response2.status_code == 400
+    assert support_module.resolve_installed_plugin_path("market.legacy") is None
 
 
 def test_install_plugin_cleans_config_only_residue(client: TestClient, monkeypatch):
@@ -568,3 +572,5 @@ def test_plugin_operation_reservation_releases_after_failure(client: TestClient)
 
     with management_module._reserve_plugin_operation("test.demo", "update"):
         pass
+
+
