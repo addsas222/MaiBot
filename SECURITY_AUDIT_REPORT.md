@@ -370,3 +370,47 @@ L1/L2/L3 已实现并回归通过（1491 passed）：
 - 选择器主列表优先、耗尽后启用保底池；超时重试用尽触发冷却；model_usage 覆盖保底模型
 - L4 观测：`model_failure_stats` 服务 + `/api/webui/models/failure-stats` 接口 + WebUI 模型页故障率面板
 - `request_timeout` 未单独实现：任务级 hard_timeout 已覆盖切换语义，SDK 级超时由 provider.timeout 用户可配
+---
+
+## 13. 第五轮增量复审（2026-08-24，官方 dev 合并后）
+
+### 13.1 范围与方法
+
+- 基线：`adfd075f8`（第四轮审计基线）→ `539f2b761`（合并官方 MaiM-with-u/dev 40 提交 + 本地安全整改），121 文件 / +9683−1717
+- 方法：变更文件 15 类危险模式全量扫描（scout 静态检索）+ 关键路径精读 + 依赖三件套扫描 + 前序整改逐项复核；沿用「警告即错误」政策
+
+### 13.2 前序整改复核（全部保持生效）
+
+| 项目 | 复核结果 |
+|---|---|
+| Runner RLIMIT（supervisor.py） | ✅ setrlimit ×3 在位 |
+| msgpack max_*（codec.py:66） | ✅ |
+| UDS mkdtemp(0700) | ✅ |
+| Dockerfile 非 root + adapter 锁 commit `443d6132` | ✅ |
+| pip-audit 漏洞清零 | ✅ 本轮重扫仍为 0（maibot 本体按预期跳过） |
+| pip check | ✅ 仅系统包噪音（python-debian，非本项目 venv） |
+| 存量 faiss 测试失败 ×3 | ✅ 被上游修复吸收，全量回归 1555 passed / 0 failed |
+
+### 13.3 新发现（按 error 标准）
+
+| # | 级别 | 位置 | 问题 | 处置建议 |
+|---|---|---|---|---|
+| E1 | 🔴 error | `src/common/utils/utils_message.py:57` | `msgpack.unpackb(raw_content)` 无 max_* 上限，输入为外部平台消息内容（DB Messages.raw_content），存在深嵌套/超大结构资源耗尽面；与 codec.py:62-68 的正确实现形成对照 | P1：比照 codec.py 补齐 max_str/bin/array/map/ext_len；防呆：封装统一的 `safe_unpackb()` 供两处共用，新增解包点强制走该入口 |
+| E2 | 🟡→error | `src/webui/routers/model.py:598-601,741-744` | `api_key` 经 URL query 传输，会被 uvicorn access log、反代日志、浏览器历史留存 | P2：改为 POST body 或 header；同组 `test-provider-connection-by-name(:755)` 已用 provider_name 规避，证明可改 |
+| E3 | 🔴 error（配置性） | `src/config/official_configs.py:5709` + `openai_gateway.py:24` | OpenAI 兼容网关 `/v1` 默认 `auth_token=""` 即不鉴权；WebUI 端口非 localhost 暴露时任何人都可消耗 LLM 配额 | P1：默认拒绝启动或启动时打 WARNING 强提示；文档标注暴露风险 |
+| E4 | 🟡→error | `src/llm_models/openai_compat.py:48-49` | base_url 缺协议时自动补 `http://`，Bearer Key 明文跨网传输 | P3：改默认 `https://` 或补全时打警告日志 |
+| N1 | 🟡→error | `dashboard/package-lock.json` | npm audit 实测 **30 漏洞（5 critical / 23 high / 2 low）**——上轮"npm audit 0 漏洞"结论无效：镜像源不实现 audit 端点导致假阴性。生产可达面：`seroval`(critical, via @tanstack/react-router)、`nanoid`(high, via @uppy)；其余 vitest/electron-builder/tar 家族均为 dev 工具链不进产物。全部有可用修复版本 | P1：升级 seroval/nanoid 所在直接依赖；P2：dev 工具链 `npm audit fix`（勿 --force）；防呆：CI 用官方 registry 跑 npm audit 并设阈值门禁 |
+
+观测项（不计入阻塞）：W1 WebUI 鉴权三种风格并存（router 级依赖 / 函数内手动校验 / 独立 token 分支），当前逐一核对无漏网点，但属结构性风险，建议统一 router 级依赖；W2 吞异常 7 处（最重：common/logger.py:227/:247 WebSocket 日志广播静默失败）；model_failure_stats.py 缓存锁懒初始化存在良性竞态。
+
+### 13.4 扫描干净项（零命中确认）
+
+eval/exec/yaml.load/shell=True/SSL verify=False/md5-sha1 用于令牌/random 用于密钥/tempfile 竞态/硬编码密钥/subprocess 注入拼接：本轮变更范围零命中。`metadata_store.py:2657` 表名插值经核实有白名单校验（allowed 集合）✅；`convert_lpmm.py` pickle 为离线工具且信任边界已文档化 ✅。
+
+### 13.5 上游修复落地核验
+
+上游 40 提交中抽样 10 个安全相关修复（已删除证据隔离/画像恢复写事务/图写入原子提交/向量指纹信任/导入参数校验/别名竞态等），diff 级核对均配对落地（实现+测试同步提交）；合并冲突解决文件（web_import_manager.py、test_memory_routes.py、pyproject.toml）逐行自审通过；A_memorix 变更遵守 MODIFICATION_POLICY（实现层归上游，本地仅最小暂停补丁并带 NOTE 标记）。
+
+### 13.6 结论
+
+**有条件通过**。无远程可利用的注入/RCE 新缺陷；按警告即错误政策，E1/E3/N1(生产面) 整改后方可解除条件。
