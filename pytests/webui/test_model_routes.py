@@ -102,9 +102,11 @@ async def test_test_provider_connection_uses_query_api_key_for_gemini(
     monkeypatch.setattr(model_routes, "get_webui_http_client", lambda: fake_client_class())
 
     result = await model_routes.test_provider_connection(
-        base_url="https://generativelanguage.googleapis.com/v1beta",
-        api_key="valid-gemini-key",
-        client_type="gemini",
+        model_routes.TestConnectionByUrlRequest(
+            base_url="https://generativelanguage.googleapis.com/v1beta",
+            api_key="valid-gemini-key",
+            client_type="gemini",
+        )
     )
 
     assert result["network_ok"] is True
@@ -139,9 +141,11 @@ async def test_test_provider_connection_uses_bearer_auth_for_openai_compatible(
     monkeypatch.setattr(model_routes, "get_webui_http_client", lambda: fake_client_class())
 
     result = await model_routes.test_provider_connection(
-        base_url="https://example.com/v1",
-        api_key="valid-openai-key",
-        client_type="openai",
+        model_routes.TestConnectionByUrlRequest(
+            base_url="https://example.com/v1",
+            api_key="valid-openai-key",
+            client_type="openai",
+        )
     )
 
     assert result["network_ok"] is True

@@ -54,7 +54,17 @@ _DB_WRITE_THREAD_LOCK = threading.Lock()
 class MessageUtils:
     @staticmethod
     def from_db_record_msg_to_MaiSeq(raw_content: bytes) -> MessageSequence:
-        unpacked_data = msgpack.unpackb(raw_content)
+        # 消息体虽存于本地 SQLite（Messages.raw_content），但导入/迁移链路可能写入
+        # 外部来源数据；比照 plugin_runtime codec 收紧解包上限，防深嵌套/超大结构
+        # 拖垮解析。超限直接抛 msgpack 异常，不做兜底。
+        unpacked_data = msgpack.unpackb(
+            raw_content,
+            raw=False,
+            max_str_len=8 << 20,
+            max_bin_len=32 << 20,
+            max_array_len=50000,
+            max_map_len=50000,
+        )
         return MessageSequence.from_dict(unpacked_data)
 
     @staticmethod

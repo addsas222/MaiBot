@@ -595,29 +595,37 @@ async def get_provider_models(
     }
 
 
-@router.get("/list-by-url")
-async def get_models_by_url(
-    base_url: str = Query(..., description="提供商的基础 URL"),
-    api_key: str = Query(..., description="API Key"),
-    parser: str = Query("openai", description="响应解析器类型 (openai | gemini)"),
-    endpoint: str = Query("/models", description="获取模型列表的端点"),
-    client_type: str = Query("openai", description="客户端类型 (openai | openai_responses | gemini)"),
-    auth_type: str = Query("bearer", description="鉴权方式 (bearer | header | query | none)"),
-    auth_header_name: str = Query("Authorization", description="Header 鉴权名称"),
-    auth_header_prefix: str = Query("Bearer", description="Header 鉴权前缀"),
-    auth_query_name: str = Query("api_key", description="Query 鉴权参数名"),
-):
+class FetchModelsByUrlRequest(BaseModel):
+    """按 URL 直接拉取模型列表的请求体。
+
+    API Key 经请求体传输而非 URL query，避免被 uvicorn 访问日志、
+    反向代理日志与浏览器历史留存。
+    """
+
+    base_url: str = Field(..., description="提供商的基础 URL")
+    api_key: str = Field(..., description="API Key")
+    parser: str = Field("openai", description="响应解析器类型 (openai | gemini)")
+    endpoint: str = Field("/models", description="获取模型列表的端点")
+    client_type: str = Field("openai", description="客户端类型 (openai | openai_responses | gemini)")
+    auth_type: str = Field("bearer", description="鉴权方式 (bearer | header | query | none)")
+    auth_header_name: str = Field("Authorization", description="Header 鉴权名称")
+    auth_header_prefix: str = Field("Bearer", description="Header 鉴权前缀")
+    auth_query_name: str = Field("api_key", description="Query 鉴权参数名")
+
+
+@router.post("/list-by-url")
+async def get_models_by_url(request: FetchModelsByUrlRequest):
     """通过 URL 直接获取模型列表。"""
     models = await _fetch_models_from_provider(
-        base_url=base_url,
-        api_key=api_key,
-        endpoint=endpoint,
-        parser=parser,
-        client_type=client_type,
-        auth_type=auth_type,
-        auth_header_name=auth_header_name,
-        auth_header_prefix=auth_header_prefix,
-        auth_query_name=auth_query_name,
+        base_url=request.base_url,
+        api_key=request.api_key,
+        endpoint=request.endpoint,
+        parser=request.parser,
+        client_type=request.client_type,
+        auth_type=request.auth_type,
+        auth_header_name=request.auth_header_name,
+        auth_header_prefix=request.auth_header_prefix,
+        auth_query_name=request.auth_query_name,
     )
 
     return {
@@ -738,17 +746,21 @@ async def get_model_failure_stats(force_refresh: bool = Query(False, description
     return {"success": True, **get_model_failure_stats(force_refresh=force_refresh)}
 
 
-@router.get("/test-connection")
-async def test_provider_connection(
-    base_url: str = Query(..., description="提供商的基础 URL"),
-    api_key: Optional[str] = Query(None, description="API Key（可选，用于验证 Key 有效性）"),
-    client_type: str = Query("openai", description="客户端类型 (openai | openai_responses | gemini)"),
-):
+class TestConnectionByUrlRequest(BaseModel):
+    """按 URL 测试厂商连通性的请求体（API Key 不走 URL query）。"""
+
+    base_url: str = Field(..., description="提供商的基础 URL")
+    api_key: Optional[str] = Field(None, description="API Key（可选，用于验证 Key 有效性）")
+    client_type: str = Field("openai", description="客户端类型 (openai | openai_responses | gemini)")
+
+
+@router.post("/test-connection")
+async def test_provider_connection(request: TestConnectionByUrlRequest):
     """测试任意厂商地址；该入口只允许访问公网目标。"""
     return await _test_provider_connection(
-        base_url=base_url,
-        api_key=api_key,
-        client_type=client_type,
+        base_url=request.base_url,
+        api_key=request.api_key,
+        client_type=request.client_type,
     )
 
 

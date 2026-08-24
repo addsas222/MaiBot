@@ -147,6 +147,13 @@ class MCPHostServerService:
         from src.config.config import global_config
 
         server_config = global_config.mcp.server
+        # 安全防呆（第五轮审计 E3）：未配置访问令牌且监听非环回地址时，
+        # 任何可达主机均可调用 MCP 工具；启动时强提示，不静默放行
+        if (server_config.auth_token or "").strip() == "" and server_config.host not in {"127.0.0.1", "localhost", "::1"}:
+            logger.warning(
+                f"MCP 服务器监听非环回地址 {server_config.host}:{server_config.port} 但未配置访问令牌，"
+                "任何能访问该端口的主机均可调用 MCP 工具；建议在配置中设置 mcp.server.auth_token"
+            )
         signature = self._build_config_signature(server_config)
         if (
             self._uvicorn_server is not None

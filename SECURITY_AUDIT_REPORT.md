@@ -414,3 +414,16 @@ eval/exec/yaml.load/shell=True/SSL verify=False/md5-sha1 用于令牌/random 用
 ### 13.6 结论
 
 **有条件通过**。无远程可利用的注入/RCE 新缺陷；按警告即错误政策，E1/E3/N1(生产面) 整改后方可解除条件。
+
+### 13.7 整改记录（2026-08-24）
+
+| 项 | 状态 | 落点 |
+|---|---|---|
+| E1 | ✅ 已整改 | `utils_message.py:56-68`：unpackb 补齐 max_str/bin/array/map_len（8MB/32MB/5万/5万），超限直接抛异常不兜底 |
+| E2 | ✅ 已整改 | `model.py`：`/list-by-url`、`/test-connection` GET→POST，API Key 改走请求体（`FetchModelsByUrlRequest`/`TestConnectionByUrlRequest`）；无存量调用方，干净切换 |
+| E3 | ✅ 已整改（含审计勘误） | 复核发现网关本身强制 WebUI 访问令牌（空 token 直接 401），原表述"默认不鉴权"有误；真实缺口为 MCP 宿主服务器——已在 `mcp_server/service.py:start()` 增加非环回+空令牌启动强告警 |
+| E4 | ✅ 已整改 | `openai_compat.py`：缺协议时本机/内网（loopback/RFC1918）补 `http://`，公网补 `https://` 并告警；8 组用例行为验证通过 |
+| N1 | ✅ 生产面清零 | `npm audit fix`：30→8；seroval 升至 1.6.3（critical 修复）、nanoid 链移除；剩余 8 项全部为 dev 工具链（vitest@4/electron@43/react-joyride@3 需跨大版本），留待上游 dashboard 发布线，不阻塞本仓库 |
+| W1/W2 | 📋 保持观测 | 不在本轮整改范围 |
+
+回归：全量 1555 passed / 3 skipped（含 2 个适配新请求模型的 model 路由测试）；dashboard `npm run build` 通过。

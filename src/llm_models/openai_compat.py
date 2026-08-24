@@ -1,8 +1,24 @@
+import ipaddress
 from dataclasses import dataclass, field
 from typing import Any, Mapping
 from urllib.parse import urlparse
 
+from src.common.logger import get_logger
 from src.config.model_configs import APIProvider, OpenAICompatibleAuthType
+
+logger = get_logger("llm_models.openai_compat")
+
+
+def _is_local_host(host: str) -> bool:
+    """判断主机名是否为本机/内网地址（这类目标通常只有 http 可用）。"""
+
+    if host in {"localhost", "::1"}:
+        return True
+    try:
+        addr = ipaddress.ip_address(host.strip("[]"))
+    except ValueError:
+        return False
+    return addr.is_loopback or addr.is_private
 
 # OpenCode zen 免费网关只放行 opencode CLI 客户端身份的请求，
 # 其余 User-Agent 一律按匿名客户端拒绝（429 FreeUsageLimitError）。
@@ -32,11 +48,12 @@ class OpenAICompatibleRequestOverrides:
     extra_query: dict[str, object] = field(default_factory=dict)
     extra_body: dict[str, Any] = field(default_factory=dict)
 
-
 def normalize_openai_base_url(base_url: str) -> str:
     """规范化 OpenAI 兼容接口的基础地址。
 
-    去掉尾部斜杠，且如果缺少协议前缀则自动补全 http://。
+    去掉尾部斜杠；缺少协议前缀时，本机/内网地址补 ``http://``，
+    其余（公网目标）一律补 ``https://`` 并记录告警——避免 API Key
+    因默认明文 http 而跨网泄露。
 
     Args:
         base_url: 原始基础地址。
@@ -46,8 +63,17 @@ def normalize_openai_base_url(base_url: str) -> str:
     """
     base_url = base_url.strip()
     if base_url and "://" not in base_url:
-        base_url = "http://" + base_url
+        host = urlparse(f"//{base_url.split('/', 1)[0]}", scheme="").hostname or ""
+        if _is_local_host(host):
+            base_url = "http://" + base_url
+        else:
+            logger.warning(
+                f"base_url 缺少协议前缀，已按 https:// 补全：{base_url}。"
+                "如该目标确实仅支持 http，请显式写出 http:// 前缀"
+            )
+            base_url = "https://" + base_url
     return base_url.rstrip("/")
+
 
 
 def _build_auth_header_value(prefix: str, api_key: str) -> str:

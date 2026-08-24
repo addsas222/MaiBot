@@ -1,4 +1,14 @@
 # 更新日志
+
+# [1.2.4] - 2026-8-24
+
+## 安全
+
+- 消息反序列化补齐 msgpack 解包上限，防止导入/迁移链路写入的深嵌套或超大结构拖垮解析（第五轮审计 E1）
+- 模型路由 `/models/list-by-url`、`/models/test-connection` 由 GET 改为 POST 请求体传参，API Key 不再经 URL query 留存于访问日志与浏览器历史（E2）
+- MCP 宿主服务器监听非环回地址且未配置访问令牌时，启动输出强告警（E3）
+- OpenAI 兼容 base_url 缺协议前缀时按目标区分补全：本机/内网补 `http://`，公网补 `https://` 并告警，避免 API Key 明文跨网传输（E4）
+- dashboard 前端依赖安全升级：seroval（critical）修复、nanoid 高危链移除，npm 审计生产可达面清零；剩余 8 项均为 dev 工具链（vitest/electron 等），需跨大版本升级，留待上游发布线处理（N1）
 # [1.2.3] - 2026-8-23
 
 ## 表达方式
