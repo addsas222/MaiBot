@@ -16,7 +16,10 @@ import argparse
 import json
 import logging
 import os
+<<<<<<< HEAD
 import secrets
+=======
+>>>>>>> c7a23699d (fix: 第六轮审计整改——表情包导入路径穿越拦截/Cohub网关鉴权与令牌原子落盘/上游错误体不外传)
 import time
 import uuid
 from pathlib import Path
@@ -48,6 +51,7 @@ def _check_gateway_auth(request: Request) -> Optional[JSONResponse]:
     expected = app.state.api_key
     if not expected:
         return None
+<<<<<<< HEAD
     # RFC 6750：scheme 大小写不敏感；恒定时间比较防时序侧信道（第七轮审计 H3）
     parts = request.headers.get("authorization", "").split(None, 1)
     if (
@@ -83,6 +87,12 @@ class _HideDocsWhenAuthed:
 
 
 app.add_middleware(_HideDocsWhenAuthed)
+=======
+    provided = request.headers.get("authorization", "").removeprefix("Bearer ").strip()
+    if provided != expected:
+        return JSONResponse(status_code=401, content={"error": {"message": "无效的 API Key"}})
+    return None
+>>>>>>> c7a23699d (fix: 第六轮审计整改——表情包导入路径穿越拦截/Cohub网关鉴权与令牌原子落盘/上游错误体不外传)
 
 
 class AuthError(Exception):
