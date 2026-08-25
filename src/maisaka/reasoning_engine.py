@@ -54,8 +54,9 @@ from src.maisaka.builtin_tool import (
 from .chat_loop_service import ChatResponse, MaisakaChatLoopService
 from src.maisaka.display.prompt_cli_renderer import PromptCLIVisualizer
 from src.maisaka.visual.chat_history_refresher import (
-    has_pending_image_recognition,
+    collect_pending_image_recognition_hashes,
     log_pending_image_recognition_before_text_planner,
+    PlannerImageRecognitionWaiter,
     refresh_chat_history_visual_placeholders,
 )
 from src.maisaka.builtin_tool.context import BuiltinToolRuntimeContext
@@ -1303,14 +1304,23 @@ class MaisakaReasoningEngine:
         if wait_seconds <= 0:
             return refreshed_count
 
+        # 用内存 pending-hash 集合 + asyncio.Event 等待识图完成，
+        # 取代原先每 0.2s 扫描历史并逐哈希查库的 N+1 轮询
         deadline = time.monotonic() + wait_seconds
-        while has_pending_image_recognition(self._runtime._chat_history):
-            remaining_seconds = deadline - time.monotonic()
-            if remaining_seconds <= 0:
-                break
+        waiter = PlannerImageRecognitionWaiter()
+        try:
+            waiter.track(collect_pending_image_recognition_hashes(self._runtime._chat_history))
+            while waiter.has_pending:
+                remaining_seconds = deadline - time.monotonic()
+                if remaining_seconds <= 0:
+                    break
 
-            await asyncio.sleep(min(0.2, remaining_seconds))
-            refreshed_count += await self._refresh_chat_history_visual_placeholders_once()
+                await waiter.wait_remaining(remaining_seconds)
+                refreshed_count += await self._refresh_chat_history_visual_placeholders_once()
+                # 刷新后重新收集：处理识图失败残留占位，以及等待期间新入历史消息的待识别图片
+                waiter.track(collect_pending_image_recognition_hashes(self._runtime._chat_history))
+        finally:
+            waiter.dispose()
 
         refreshed_count += await self._refresh_chat_history_visual_placeholders_once()
         return refreshed_count

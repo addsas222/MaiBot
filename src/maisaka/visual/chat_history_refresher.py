@@ -1,7 +1,8 @@
 """Maisaka 聊天历史视觉占位刷新器。"""
 
+import asyncio
 import time
-from typing import Awaitable, Callable, Optional
+from typing import Awaitable, Callable, Iterable, Optional
 from sqlmodel import select
 
 from src.chat.message_receive.message import SessionMessage
@@ -25,6 +26,72 @@ _pending_image_registered_at: dict[str, float] = {}
 
 _PLANNER_PENDING_IMAGE_HASHES: set[str] = set()
 _MONITOR_PENDING_IMAGE_REFRESHERS: dict[str, list[Callable[[str], None]]] = {}
+_ACTIVE_IMAGE_RECOGNITION_WAITERS: list["PlannerImageRecognitionWaiter"] = []
+
+
+class PlannerImageRecognitionWaiter:
+    """planner 侧识图等待器。
+
+    用内存 pending-hash 集合代替对聊天历史和数据库的高频轮询：
+    - 登记阶段一次性收集历史中待识别的图片哈希；
+    - 识图完成回调（log_tracked_image_recognition_completed）移除对应哈希，
+      全部完成后置位 asyncio.Event 唤醒等待方，避免 N+1 DB 轮询。
+
+    线程约束：notify_completed 必须在事件循环线程内调用（与模块内
+    _PLANNER_PENDING_IMAGE_HASHES / _MONITOR_PENDING_IMAGE_REFRESHERS
+    的既有单循环假设一致）；当前唯一调用链 update_image_description
+    均在主循环协程中执行。Event 为"全部完成"闩锁：仅在最后一个
+    待识别哈希移除时置位，部分完成不唤醒。
+    """
+
+    def __init__(self) -> None:
+        self._pending_hashes: set[str] = set()
+        self._all_completed = asyncio.Event()
+        _ACTIVE_IMAGE_RECOGNITION_WAITERS.append(self)
+
+    def track(self, image_hashes: Iterable[str]) -> None:
+        """登记需要等待的图片哈希；有新增时清空完成事件。"""
+
+        added = False
+        for image_hash in image_hashes:
+            if image_hash and image_hash not in self._pending_hashes:
+                self._pending_hashes.add(image_hash)
+                added = True
+        if added:
+            self._all_completed.clear()
+
+    def notify_completed(self, image_hash: str) -> None:
+        """识图完成回调：移除哈希，全部完成后置位事件唤醒等待方。"""
+
+        if image_hash not in self._pending_hashes:
+            return
+        self._pending_hashes.discard(image_hash)
+        if not self._pending_hashes:
+            self._all_completed.set()
+
+    @property
+    def has_pending(self) -> bool:
+        """是否仍有未完成的登记哈希。"""
+
+        return bool(self._pending_hashes)
+
+    async def wait_remaining(self, timeout: float) -> None:
+        """等待全部登记哈希完成或超时；超时静默返回，由调用方按截止时间收尾。"""
+
+        if self._all_completed.is_set() or not self._pending_hashes:
+            return
+        try:
+            await asyncio.wait_for(self._all_completed.wait(), timeout)
+        except asyncio.TimeoutError:
+            pass
+
+    def dispose(self) -> None:
+        """从全局等待器注册表中移除自身，防止泄漏。"""
+
+        try:
+            _ACTIVE_IMAGE_RECOGNITION_WAITERS.remove(self)
+        except ValueError:
+            pass
 
 
 def _prune_stale_pending_images() -> None:
@@ -93,12 +160,13 @@ async def refresh_chat_history_visual_placeholders(
     return refreshed_count
 
 
-def has_pending_image_recognition(chat_history: list[LLMContextMessage]) -> bool:
-    """判断历史中是否仍有可等待的图片识别任务。"""
+def collect_pending_image_recognition_hashes(chat_history: list[LLMContextMessage]) -> list[str]:
+    """收集历史中仍待识别的图片哈希（含转发嵌套），供等待器登记。"""
 
     if not _is_vlm_task_configured():
-        return False
+        return []
 
+    pending_image_hashes: list[str] = []
     for history_message in chat_history:
         if not isinstance(history_message, SessionBackedMessage):
             continue
@@ -109,10 +177,9 @@ def has_pending_image_recognition(chat_history: list[LLMContextMessage]) -> bool
         else:
             components = original_message.raw_message.components
 
-        if _has_pending_image_component(components):
-            return True
+        pending_image_hashes.extend(_collect_pending_image_hashes(components))
 
-    return False
+    return pending_image_hashes
 
 
 def log_pending_image_recognition_before_text_planner(
@@ -148,7 +215,7 @@ def log_pending_image_recognition_before_text_planner(
 
 
 def log_tracked_image_recognition_completed(image_hash: str) -> None:
-    """当 planner 已遇到的待识别图片完成识别时记录一次日志。"""
+    """当被跟踪的图片完成识别时，更新 planner 等待状态并触发监控占位刷新。"""
 
     if not image_hash:
         return
@@ -156,6 +223,10 @@ def log_tracked_image_recognition_completed(image_hash: str) -> None:
     if image_hash in _PLANNER_PENDING_IMAGE_HASHES:
         _PLANNER_PENDING_IMAGE_HASHES.remove(image_hash)
         logger.info(f"非多模态 planner 等待中的图片已完成识别，image_hash={image_hash}")
+
+    # 通知所有在等待该图片的识图等待器（内存态事件，替代高频 DB 轮询）
+    for waiter in list(_ACTIVE_IMAGE_RECOGNITION_WAITERS):
+        waiter.notify_completed(image_hash)
 
     refreshers = _MONITOR_PENDING_IMAGE_REFRESHERS.pop(image_hash, [])
     for refresher in refreshers:
@@ -193,23 +264,6 @@ def _is_vlm_task_configured() -> bool:
     except Exception as exc:
         logger.warning(f"读取 VLM 模型配置失败，跳过图片识别等待: {exc}")
         return False
-
-
-def _has_pending_image_component(components: list[object]) -> bool:
-    for component in components:
-        if isinstance(component, ImageComponent):
-            if _should_refresh_image_component(component) and _is_image_component_pending(component):
-                return True
-            continue
-
-        if not isinstance(component, ForwardNodeComponent):
-            continue
-
-        for forward_component in component.forward_components:
-            if _has_pending_image_component(forward_component.content):
-                return True
-
-    return False
 
 
 def _collect_pending_image_hashes(components: list[object]) -> list[str]:

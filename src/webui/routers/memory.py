@@ -4,6 +4,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Iterable, Optional
 
+import asyncio
 import json
 import shutil
 import uuid
@@ -2051,6 +2052,12 @@ async def _memory_timeline(
 
 
 async def _import_chat_targets() -> ImportChatTargetsResponse:
+    # 同步 DB 查询放到线程中执行，避免阻塞事件循环
+    return await asyncio.to_thread(_load_import_chat_targets)
+
+
+def _load_import_chat_targets() -> ImportChatTargetsResponse:
+    """同步加载导入聊天目标列表；阻塞方法，需通过 asyncio.to_thread 调用。"""
     try:
         # 导入目标列表按最近活跃排序，最多返回 MAX_IMPORT_CHAT_TARGETS 个，避免大表全量拉取
         with get_db_session() as session:
@@ -3269,7 +3276,8 @@ async def get_memory_record_context(
     record_id: str,
     limit: int = Query(50, ge=1, le=200),
 ):
-    return _memory_record_context(record_type, record_id, limit)
+    # 同步 DB 查询放到线程中执行，避免阻塞事件循环
+    return await asyncio.to_thread(_memory_record_context, record_type, record_id, limit)
 
 
 @router.get("/graph")

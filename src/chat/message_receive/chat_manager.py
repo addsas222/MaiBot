@@ -129,31 +129,20 @@ class ChatManager:
                 self._save_session(session)
             return session
 
-        # 内存没有就找db
+        # 内存没有就找db（同步 DB 访问放到线程中执行，避免阻塞事件循环）
         try:
-            with get_db_session() as db_session:
-                statement = select(ChatSession).filter_by(session_id=session_id).limit(1)
-                if result := db_session.exec(statement).first():
-                    session = BotChatSession.from_db_instance(result)
-                    route_metadata_changed = self._apply_route_metadata(session, account_id=account_id, scope=scope)
-                    identity_changed = False
-                    if session.session_id in self.last_messages:
-                        session.set_context(self.last_messages[session.session_id])
-                        identity_changed = self._update_session_identity(session, self.last_messages[session.session_id])
-                    if route_metadata_changed or identity_changed:
-                        result.account_id = session.account_id
-                        result.scope = session.scope
-                        result.user_id = session.user_id
-                        result.user_nickname = session.user_nickname
-                        result.user_cardname = session.user_cardname
-                        result.group_id = session.group_id
-                        result.group_name = session.group_name
-                        db_session.add(result)
-                    self.sessions[session.session_id] = session
-                    return session
+            session = await asyncio.to_thread(
+                self._load_session_from_db,
+                session_id,
+                account_id=account_id,
+                scope=scope,
+            )
         except Exception as e:
             logger.error(f"从数据库获取会话时发生错误: {e}")
             raise e
+        if session is not None:
+            self.sessions[session.session_id] = session
+            return session
 
         # 都没有就创建新的
         new_session = BotChatSession(
@@ -170,6 +159,34 @@ class ChatManager:
             self._update_session_identity(new_session, self.last_messages[new_session.session_id])
         self._save_session(new_session)
         return new_session
+
+    def _load_session_from_db(
+        self,
+        session_id: str,
+        account_id: Optional[str] = None,
+        scope: Optional[str] = None,
+    ) -> Optional[BotChatSession]:
+        """从数据库加载会话；同步阻塞方法，需通过 asyncio.to_thread 调用。"""
+        with get_db_session() as db_session:
+            statement = select(ChatSession).filter_by(session_id=session_id).limit(1)
+            if result := db_session.exec(statement).first():
+                session = BotChatSession.from_db_instance(result)
+                route_metadata_changed = self._apply_route_metadata(session, account_id=account_id, scope=scope)
+                identity_changed = False
+                if session.session_id in self.last_messages:
+                    session.set_context(self.last_messages[session.session_id])
+                    identity_changed = self._update_session_identity(session, self.last_messages[session.session_id])
+                if route_metadata_changed or identity_changed:
+                    result.account_id = session.account_id
+                    result.scope = session.scope
+                    result.user_id = session.user_id
+                    result.user_nickname = session.user_nickname
+                    result.user_cardname = session.user_cardname
+                    result.group_id = session.group_id
+                    result.group_name = session.group_name
+                    db_session.add(result)
+                return session
+        return None
 
     def register_message(self, message: "SessionMessage"):
         platform = message.platform

@@ -197,14 +197,6 @@ class ImageManager:
             task.result()
         except Exception as exc:
             logger.debug(f"图片描述后台任务结束时捕获异常，哈希值: {image_hash}，错误: {exc}")
-            return
-
-        try:
-            from src.maisaka.visual.chat_history_refresher import log_tracked_image_recognition_completed
-
-            log_tracked_image_recognition_completed(image_hash)
-        except Exception as exc:
-            logger.debug(f"通知 MaiSaka 图片识别完成状态失败，image_hash={image_hash}: {exc}")
 
     def get_image_from_db(self, image_hash: str) -> Optional[MaiImage]:
         """
@@ -277,6 +269,14 @@ class ImageManager:
         except Exception as e:
             logger.error(f"更新图片描述时发生错误: {e}")
             return False
+        # 描述成功落库即视为识别完成；在此统一通知 MaiSaka 等待器，
+        # 覆盖后台构建与内联构建两条完成路径
+        try:
+            from src.maisaka.visual.chat_history_refresher import log_tracked_image_recognition_completed
+
+            log_tracked_image_recognition_completed(image.file_hash)
+        except Exception as exc:
+            logger.debug(f"通知 MaiSaka 图片识别完成状态失败，file_hash={image.file_hash}: {exc}")
         return True
 
     def delete_image(self, image: MaiImage) -> bool:
@@ -314,33 +314,47 @@ class ImageManager:
         """先保存图片记录，确保后续可以按哈希回填图片内容。"""
         hash_str = hashlib.sha256(image_bytes).hexdigest()
 
+        # 同步 DB 访问放到线程中执行，避免阻塞事件循环
         try:
-            with get_db_session() as session:
-                statement = select(Images).filter_by(image_hash=hash_str, image_type=ImageType.IMAGE).limit(1)
-                if record := session.exec(statement).first():
-                    self._normalize_image_registration_fields(record)
-                    record_path = resolve_stored_image_path(record.full_path)
-                    if not record.no_file_flag and record_path.is_file():
-                        logger.info(f"图片已存在于数据库中，哈希值: {hash_str}")
-                        record.last_used_time = datetime.now()
-                        record.query_count += 1
-                        session.add(record)
-                        session.flush()
-                        return MaiImage.from_db_instance(record)
-                    logger.info(f"图片记录存在但文件缺失，准备重新保存图片文件，哈希值: {hash_str}")
+            if cached_image := await asyncio.to_thread(self._load_existing_saved_image, hash_str):
+                return cached_image
         except Exception as e:
             logger.error(f"查询图片记录时发生错误: {e}")
             raise e
 
         logger.debug(f"图片不存在或文件缺失，准备保存图片文件，哈希值: {hash_str}")
+        # 文件写入与同步 DB 写入同样放到线程中执行
+        tmp_file_path = await asyncio.to_thread(self._write_image_tmp_file, image_bytes, hash_str)
+        mai_image = MaiImage(full_path=tmp_file_path, image_bytes=image_bytes)
+        await mai_image.calculate_hash_format()
+        if not await asyncio.to_thread(self._upsert_saved_image_record, mai_image):
+            raise RuntimeError(f"保存图片记录到数据库失败: {hash_str}")
+        return mai_image
+
+    def _load_existing_saved_image(self, hash_str: str) -> Optional[MaiImage]:
+        """查询数据库中是否已有完整的图片记录；同步阻塞方法，需通过 asyncio.to_thread 调用。"""
+        with get_db_session() as session:
+            statement = select(Images).filter_by(image_hash=hash_str, image_type=ImageType.IMAGE).limit(1)
+            if record := session.exec(statement).first():
+                self._normalize_image_registration_fields(record)
+                record_path = resolve_stored_image_path(record.full_path)
+                if not record.no_file_flag and record_path.is_file():
+                    logger.info(f"图片已存在于数据库中，哈希值: {hash_str}")
+                    record.last_used_time = datetime.now()
+                    record.query_count += 1
+                    session.add(record)
+                    session.flush()
+                    return MaiImage.from_db_instance(record)
+                logger.info(f"图片记录存在但文件缺失，准备重新保存图片文件，哈希值: {hash_str}")
+        return None
+
+    @staticmethod
+    def _write_image_tmp_file(image_bytes: bytes, hash_str: str) -> Path:
+        """将图片字节写入临时缓存文件；同步阻塞方法，需通过 asyncio.to_thread 调用。"""
         tmp_file_path = IMAGE_DIR / f"{hash_str}.tmp"
         with tmp_file_path.open("wb") as f:
             f.write(image_bytes)
-        mai_image = MaiImage(full_path=tmp_file_path, image_bytes=image_bytes)
-        await mai_image.calculate_hash_format()
-        if not self._upsert_saved_image_record(mai_image):
-            raise RuntimeError(f"保存图片记录到数据库失败: {hash_str}")
-        return mai_image
+        return tmp_file_path
 
     def _upsert_saved_image_record(self, image: MaiImage) -> bool:
         """保存图片记录，或在文件被清理后恢复同 hash 记录的文件状态。"""

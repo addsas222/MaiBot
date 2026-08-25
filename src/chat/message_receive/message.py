@@ -439,21 +439,43 @@ class SessionMessage(MaiMessage):
             component.target_message_sender_nickname = sender_info.user_nickname
             component.target_message_sender_id = sender_info.user_id
             return f"[回复了{tgt_msg_s_name}的消息: {content}]"
-        else:  # 尝试从数据库根据消息id查找消息内容
+        else:  # 尝试从数据库根据消息id查找消息内容（同步 DB 访问放到线程中执行，避免阻塞事件循环）
             try:
-                with get_db_session() as session:
-                    statement = select(Messages).filter_by(message_id=component.target_message_id).limit(1)
-                    if db_msg := session.exec(statement).first():
-                        component.target_message_content = db_msg.processed_plain_text
-                        component.target_message_sender_cardname = db_msg.user_cardname
-                        component.target_message_sender_nickname = db_msg.user_nickname
-                        component.target_message_sender_id = db_msg.user_id
-                        tgt_msg_s_name = db_msg.user_cardname or db_msg.user_nickname or db_msg.user_id
-                        return f"[回复了{tgt_msg_s_name}的消息: {db_msg.processed_plain_text}]"
+                reply_info = await asyncio.to_thread(self._lookup_reply_message_in_db, component.target_message_id)
+                if reply_info is not None:
+                    (
+                        component.target_message_content,
+                        component.target_message_sender_cardname,
+                        component.target_message_sender_nickname,
+                        component.target_message_sender_id,
+                    ) = reply_info
+                    tgt_msg_s_name = (
+                        component.target_message_sender_cardname
+                        or component.target_message_sender_nickname
+                        or component.target_message_sender_id
+                    )
+                    return f"[回复了{tgt_msg_s_name}的消息: {component.target_message_content}]"
             except Exception as e:
                 logger.error(f"查询回复消息时发生错误: {e}")
 
             return "[回复了一条消息，但原消息已无法访问]"
+
+    @staticmethod
+    def _lookup_reply_message_in_db(
+        target_message_id: str,
+    ) -> Optional[Tuple[str, Optional[str], Optional[str], Optional[str]]]:
+        """根据消息 ID 从数据库查询被回复消息；同步阻塞方法，需通过 asyncio.to_thread 调用。"""
+        with get_db_session() as session:
+            statement = select(Messages).filter_by(message_id=target_message_id).limit(1)
+            if db_msg := session.exec(statement).first():
+                return (
+                    db_msg.processed_plain_text,
+                    db_msg.user_cardname,
+                    db_msg.user_nickname,
+                    db_msg.user_id,
+                )
+        return None
+
 
     async def process_forward_component(
         self,

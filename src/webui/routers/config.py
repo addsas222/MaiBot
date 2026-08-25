@@ -4,6 +4,7 @@
 
 from pathlib import Path
 from typing import Annotated, Any, Dict, List, Tuple, Union, get_args, get_origin
+import asyncio
 import copy
 import json
 import os
@@ -1993,13 +1994,8 @@ async def get_config_section_schema(section_name: str):
 async def get_bot_config():
     """获取麦麦主程序配置"""
     try:
-        config_path = os.path.join(CONFIG_DIR, "bot_config.toml")
-        if not os.path.exists(config_path):
-            raise HTTPException(status_code=404, detail="配置文件不存在")
-
-        with open(config_path, "r", encoding="utf-8") as f:
-            config_data = tomlkit.load(f)
-
+        # 同步文件 IO 放到线程中执行，避免阻塞事件循环
+        config_data = await asyncio.to_thread(_load_main_config_toml, "bot_config.toml")
         return {"success": True, "config": config_data}
     except HTTPException:
         raise
@@ -2008,17 +2004,22 @@ async def get_bot_config():
         raise HTTPException(status_code=500, detail=f"读取配置文件失败: {str(e)}") from e
 
 
+def _load_main_config_toml(filename: str) -> tomlkit.TOMLDocument:
+    """同步读取主配置 TOML 文件；阻塞 IO，需通过 asyncio.to_thread 调用。"""
+    config_path = os.path.join(CONFIG_DIR, filename)
+    if not os.path.exists(config_path):
+        raise HTTPException(status_code=404, detail="配置文件不存在")
+
+    with open(config_path, "r", encoding="utf-8") as f:
+        return tomlkit.load(f)
+
+
 @router.get("/model")
 async def get_model_config():
     """获取模型配置（包含提供商和模型任务配置）"""
     try:
-        config_path = os.path.join(CONFIG_DIR, "model_config.toml")
-        if not os.path.exists(config_path):
-            raise HTTPException(status_code=404, detail="配置文件不存在")
-
-        with open(config_path, "r", encoding="utf-8") as f:
-            config_data = tomlkit.load(f)
-
+        # 同步文件 IO 放到线程中执行，避免阻塞事件循环
+        config_data = await asyncio.to_thread(_load_main_config_toml, "model_config.toml")
         return {"success": True, "config": config_data}
     except HTTPException:
         raise
