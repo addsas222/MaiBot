@@ -581,7 +581,9 @@ class ExpressionVectorIndex:
                 session_id=session_id,
             )
             candidate_profile = build_embedding_profile_from_probe_results(probe_results)
-            persisted_profile = self._load_persisted_embedding_profile(resolve_project_path(index_path))
+            persisted_profile = await asyncio.to_thread(
+                self._load_persisted_embedding_profile, resolve_project_path(index_path)
+            )
             profile = self._resolve_embedding_profile_candidate(
                 persisted_profile=persisted_profile,
                 candidate_profile=candidate_profile,

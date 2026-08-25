@@ -11,7 +11,6 @@ import {
   Hash,
   Home,
   MessageSquare,
-  Plug,
   Puzzle,
   Settings,
   ShieldCheck,

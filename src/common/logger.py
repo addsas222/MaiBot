@@ -141,19 +141,15 @@ class TimestampedFileHandler(logging.Handler):
 
     def _should_rollover(self):
         """检查是否需要轮转"""
-        if self.current_file and self.current_file.exists():
-            return self.current_file.stat().st_size >= self.max_bytes
-        return False
+        if self.current_stream is None:
+            return False
+        return self.current_stream.tell() >= self.max_bytes
 
     def _do_rollover(self):
-        """执行轮转：关闭当前文件，创建新文件"""
+        """执行轮转：关闭当前文件，清理旧文件，创建新文件"""
         if self.current_stream:
             self.current_stream.close()
-
-        # 清理旧文件
         self._cleanup_old_files()
-
-        # 创建新文件
         self._init_current_file()
 
     def _cleanup_old_files(self):
@@ -555,9 +551,11 @@ def normalize_embedded_event_dict(logger, method_name, event_dict):
     return event_dict
 
 
-def convert_pathname_to_module(logger, method_name, event_dict):
-    # sourcery skip: extract-method, use-string-remove-affix
-    """将 pathname 转换为模块风格的路径"""
+_pathname_module_cache: dict[str, str] = {}
+
+
+def convert_pathname_to_module(logger, method_name: str, event_dict: dict) -> dict:
+    """将 pathname 转换为模块风格的路径（structlog 处理器签名）"""
     if "logger_name" in event_dict and event_dict["logger_name"] == "maim_message":
         if "pathname" in event_dict:
             del event_dict["pathname"]
@@ -566,9 +564,17 @@ def convert_pathname_to_module(logger, method_name, event_dict):
     if "pathname" in event_dict:
         pathname = event_dict["pathname"]
         try:
-            # 使用绝对路径确保准确性
-            pathname_path = Path(pathname).resolve()
-            rel_path = pathname_path.relative_to(PROJECT_ROOT)
+            cached = _pathname_module_cache.get(pathname)
+            if cached is None:
+                pathname_path = Path(pathname).resolve()
+                rel_path = pathname_path.relative_to(PROJECT_ROOT)
+                module_path = str(rel_path).replace("\\", ".").replace("/", ".")
+                if module_path.endswith(".py"):
+                    module_path = module_path[:-3]
+                cached = module_path
+                if len(_pathname_module_cache) < 512:
+                    _pathname_module_cache[pathname] = cached
+            event_dict["module"] = cached
 
             # 转换为模块风格：移除 .py 扩展名，将路径分隔符替换为点
             module_path = str(rel_path).replace("\\", ".").replace("/", ".")

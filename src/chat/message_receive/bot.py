@@ -916,7 +916,9 @@ class ChatBot:
             )
 
             message.session_id = session_id  # 正确初始化session_id
-            image_process_report = process_received_images_in_message(message.raw_message.components)
+            image_process_report = await asyncio.to_thread(
+                process_received_images_in_message, message.raw_message.components
+            )
             if image_process_report.compressed_count or image_process_report.discarded_count:
                 image_process_details = []
                 if image_process_report.compressed_count:
