@@ -318,63 +318,6 @@ class Person:
         # 从数据库加载数据
         self.load_from_database()
 
-    def del_memory(self, category: str, memory_content: str, similarity_threshold: float = 0.95):
-        """
-        删除指定分类和记忆内容的记忆点
-
-        Args:
-            category: 记忆分类
-            memory_content: 要删除的记忆内容
-            similarity_threshold: 相似度阈值，默认0.95（95%）
-
-        Returns:
-            int: 删除的记忆点数量
-        """
-        if not self.memory_points:
-            return 0
-
-        deleted_count = 0
-        memory_points_to_keep = []
-
-        for memory_point in self.memory_points:
-            # 跳过None值
-            if memory_point is None:
-                continue
-            # 解析记忆点
-            parts = memory_point.split(":", 2)  # 最多分割2次，保留记忆内容中的冒号
-            if len(parts) < 3:
-                # 格式不正确，保留原样
-                memory_points_to_keep.append(memory_point)
-                continue
-
-            memory_category = parts[0].strip()
-            memory_text = parts[1].strip()
-            _memory_weight = parts[2].strip()
-
-            # 检查分类是否匹配
-            if memory_category != category:
-                memory_points_to_keep.append(memory_point)
-                continue
-
-            # 计算记忆内容的相似度
-            similarity = calculate_string_similarity(memory_content, memory_text)
-
-            # 如果相似度达到阈值，则删除（不添加到保留列表）
-            if similarity >= similarity_threshold:
-                deleted_count += 1
-                logger.debug(f"删除记忆点: {memory_point} (相似度: {similarity:.4f})")
-            else:
-                memory_points_to_keep.append(memory_point)
-
-        # 更新memory_points
-        self.memory_points = memory_points_to_keep
-
-        # 同步到数据库
-        if deleted_count > 0:
-            self.sync_to_database()
-            logger.info(f"成功删除 {deleted_count} 个记忆点，分类: {category}")
-
-        return deleted_count
 
     def add_group_nick_name(self, group_id: str, group_nick_name: str):
         """

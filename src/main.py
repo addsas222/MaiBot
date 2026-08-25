@@ -131,10 +131,24 @@ class MainSystem:
 
         from src.A_memorix.host_service import a_memorix_host_service
         from src.mcp_module.service import get_mcp_service
+        from src.mcp_server.service import get_mcp_host_server_service
 
         a_memorix_host_service.register_config_reload_callback()
         get_mcp_service().register_config_reload_callback()
+        # MCP 宿主服务器：按 mcp.server.enable 门控，随主程序启动供外部客户端接入
+        mcp_host_server = get_mcp_host_server_service()
+        mcp_host_server.register_config_reload_callback()
+
+        async def _start_mcp_host_server() -> None:
+            """MCP 宿主为可选组件：启动失败要完整暴露，但不阻断主程序其余组件。"""
+
+            try:
+                await mcp_host_server.start()
+            except Exception:
+                logger.exception("MCP 宿主服务器启动失败，已跳过（不影响主程序运行）")
+
         a_memorix_task = asyncio.create_task(a_memorix_host_service.start(), name="a_memorix_start")
+        mcp_host_task = asyncio.create_task(_start_mcp_host_server(), name="mcp_host_server_start")
 
         await asyncio.sleep(0)
         prompt_manager.load_prompts()
@@ -148,20 +162,20 @@ class MainSystem:
         # logger.info("API服务器启动成功")
 
         try:
-            await asyncio.gather(plugin_runtime_task, a_memorix_task)
+            await asyncio.gather(plugin_runtime_task, a_memorix_task, mcp_host_task)
             await emoji_load_task
         except Exception:
-            for task in (plugin_runtime_task, a_memorix_task, emoji_load_task):
+            for task in (plugin_runtime_task, a_memorix_task, mcp_host_task, emoji_load_task):
                 if not task.done():
                     task.cancel()
             await asyncio.gather(
                 plugin_runtime_task,
                 a_memorix_task,
+                mcp_host_task,
                 emoji_load_task,
                 return_exceptions=True,
             )
             raise
-
         # 初始化表情管理器
         logger.info(t("startup.emoji_manager_initialized"))
 

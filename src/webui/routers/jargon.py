@@ -375,19 +375,6 @@ def dump_session_id_dict(session_counts: Dict[str, int]) -> str:
     return json.dumps(session_counts, ensure_ascii=False)
 
 
-def get_primary_session_id(session_id_dict_str: Optional[str]) -> str:
-    """从会话计数字典中选出主聊天 ID。
-
-    Args:
-        session_id_dict_str: 数据库中保存的会话计数字典 JSON 字符串。
-
-    Returns:
-        str: 出现次数最多的聊天 ID，没有记录时返回空字符串。
-    """
-    if not (session_counts := parse_session_id_dict(session_id_dict_str)):
-        return ""
-
-    return max(session_counts.items(), key=lambda item: item[1])[0]
 
 
 def get_session_ids(session_id_dict_str: Optional[str]) -> List[str]:

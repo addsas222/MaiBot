@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING, Any, Optional
 
 import asyncio
 import json
+import socket
 import threading
 
 from src.common.logger import get_logger
@@ -24,7 +25,17 @@ logger = get_logger("mcp_host_server")
 
 MCP_SERVER_NAME: str = "maibot"
 MCP_SERVER_PATH: str = "/mcp"
-STARTUP_TIMEOUT_SECONDS: float = 15.0
+STARTUP_TIMEOUT_SECONDS: float = 60.0
+
+
+def _log_serve_task_crash(task: "asyncio.Task[None]") -> None:
+    """uvicorn serve 任务退出时的观测回调：取消视为正常关停，其余异常完整记录。"""
+
+    if task.cancelled():
+        return
+    exc = task.exception()
+    if exc is not None:
+        logger.error(f"MCP 宿主服务器运行中异常退出: {exc}", exc_info=exc)
 
 
 class MCPHostServerService:
@@ -74,7 +85,11 @@ class MCPHostServerService:
         self._reload_callback_registered = True
 
     async def on_config_reload(self, changed_scopes: Optional[list[str]] = None) -> None:
-        """在 bot 配置变化后按最新配置重启 MCP 服务器。"""
+        """在 bot 配置变化后按最新配置重启 MCP 服务器。
+
+        重启失败（如新端口被占用）只记录完整异常，不向配置监听器传播——
+        宿主是可选组件，其故障不应拖垮配置热重载链路。
+        """
 
         normalized_scopes = {str(scope).strip().lower() for scope in changed_scopes or ("bot",)}
         if "bot" not in normalized_scopes:
@@ -82,7 +97,10 @@ class MCPHostServerService:
 
         from src.config.config import config_manager
 
-        await self.restart(config_manager.get_global_config().mcp.server)
+        try:
+            await self.restart(config_manager.get_global_config().mcp.server)
+        except Exception:
+            logger.exception("MCP 宿主服务器随配置重载重启失败，保持关闭状态")
 
     @staticmethod
     def _build_app(server_config: "MCPHostServerConfig") -> Any:
@@ -102,10 +120,10 @@ class MCPHostServerService:
         register_config_tools(app)
         register_memory_tools(app)
 
-        # 工具注册完成后再构建 ASGI 应用，确保会话管理器看到全部工具
+        # 工具注册完成后再构建 ASGI 应用，确保会话管理器看到全部工具。
+        # 监听地址由 uvicorn 层绑定；mcp 2.x 的 streamable_http_app 不接受 host 参数。
         return app.streamable_http_app(
             streamable_http_path=MCP_SERVER_PATH,
-            host=server_config.host,
         )
 
     @staticmethod
@@ -170,6 +188,20 @@ class MCPHostServerService:
             self._update_status(running=False, host=server_config.host, port=server_config.port)
             return
 
+        # 端口预检：uvicorn 绑定失败会 sys.exit(1)，SystemExit 作为 BaseException
+        # 会沿事件循环提升至进程级、绕过一切 try/except 直接带走主程序。
+        # 必须在创建 serve 任务前把这类失败转成普通异常。
+        probe = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        try:
+            probe.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            probe.bind((server_config.host, server_config.port))
+        except OSError as exc:
+            raise RuntimeError(
+                f"MCP 服务器端口不可用 {server_config.host}:{server_config.port}（可能已被占用）: {exc}"
+            ) from exc
+        finally:
+            probe.close()
+
         import uvicorn
 
         app = self._build_app(server_config)
@@ -183,7 +215,21 @@ class MCPHostServerService:
 
         self._app = app
         self._uvicorn_server = server
-        self._server_task = asyncio.create_task(server.serve(), name="mcp_host_server")
+
+        async def _serve() -> None:
+            """serve 任务内部就地转化 SystemExit：uvicorn 绑定失败等路径会 sys.exit(1)，
+            该 BaseException 会被事件循环提升至进程级，绕过一切调用方 try/except。"""
+
+            try:
+                await server.serve()
+            except SystemExit as exc:
+                raise RuntimeError(
+                    f"uvicorn serve 提前退出（code={exc.code}），端口 {server_config.host}:{server_config.port} 可能被占用"
+                ) from None
+
+        self._server_task = asyncio.create_task(_serve(), name="mcp_host_server")
+        # serve() 在独立任务中长期运行：崩溃不能静默，挂回调完整记录
+        self._server_task.add_done_callback(_log_serve_task_crash)
 
         loop = asyncio.get_running_loop()
         deadline = loop.time() + STARTUP_TIMEOUT_SECONDS
@@ -191,7 +237,15 @@ class MCPHostServerService:
             if self._server_task.done():
                 raise RuntimeError(f"MCP 服务器启动失败: 端口 {server_config.port} 可能已被占用")
             if loop.time() >= deadline:
-                raise TimeoutError("MCP 服务器启动超时")
+                # 启动高峰期（a_memorix 预热、插件拉起等）主循环可能被同步阶段饿住，
+                # 15~60 秒内未就绪不代表失败：serve 任务仍活着就转后台看门狗等待，
+                # 就绪后自动修正状态；调用方按"本次窗口未就绪"处理，不阻断启动。
+                asyncio.get_running_loop().create_task(
+                    self._late_ready_watchdog(), name="mcp_host_late_ready"
+                )
+                raise TimeoutError(
+                    f"MCP 服务器 {STARTUP_TIMEOUT_SECONDS:.0f} 秒内未就绪（启动高峰竞争），已转后台继续等待"
+                )
             await asyncio.sleep(0.05)
 
         self._update_status(
@@ -202,6 +256,34 @@ class MCPHostServerService:
             error="",
         )
         logger.info(f"MCP 服务器已启动: http://{server_config.host}:{server_config.port}{MCP_SERVER_PATH}")
+
+    async def _late_ready_watchdog(self) -> None:
+        """超时后的后台看门狗：等 serve 任务真正就绪或退出，并修正运行状态。"""
+
+        from src.config.config import global_config
+
+        server = self._uvicorn_server
+        if server is None:
+            return
+
+        server_config = global_config.mcp.server
+        while not server.started:
+            if self._server_task is None or self._server_task.done():
+                self._update_status(running=False, error="启动失败（serve 任务已退出）")
+                logger.error("MCP 宿主服务器在启动窗口后就绪前退出，已确认失败")
+                return
+            await asyncio.sleep(0.25)
+        self._update_status(
+            running=True,
+            host=server_config.host,
+            port=server_config.port,
+            auth=bool((server_config.auth_token or "").strip()),
+            error="",
+        )
+        logger.info(
+            f"MCP 宿主服务器已在启动窗口后就绪: "
+            f"http://{server_config.host}:{server_config.port}{MCP_SERVER_PATH}"
+        )
 
     async def restart(self, server_config: Optional["MCPHostServerConfig"] = None) -> None:
         """按最新配置重启 MCP 服务器。"""

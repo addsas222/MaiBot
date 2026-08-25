@@ -6,7 +6,6 @@ MaiSaka - 单个 MCP 服务器连接管理
 from __future__ import annotations
 
 from contextlib import AsyncExitStack
-from datetime import timedelta
 from typing import TYPE_CHECKING, Any, Callable, Optional, cast
 
 import asyncio
@@ -124,6 +123,11 @@ class MCPConnection:
         self._http_client: Optional[httpx.AsyncClient] = None
         self._session_id_getter: Optional[Callable[[], str | None]] = None
         self._exit_stack = AsyncExitStack()
+        # anyio cancel scope 有任务亲和性：进入与退出必须在同一任务内完成，
+        # 因此整条连接的打开与关闭都由专属属主任务执行。
+        self._owner_task: Optional[asyncio.Task[None]] = None
+        self._ready = asyncio.Event()
+        self._close_requested = asyncio.Event()
 
     @property
     def session_id(self) -> str:
@@ -153,23 +157,46 @@ class MCPConnection:
             return True
 
         self.last_error = ""
+        self._ready.clear()
+        self._close_requested.clear()
+        self._owner_task = asyncio.create_task(
+            self._lifetime(), name=f"mcp-conn-{self.config.name}"
+        )
+        await self._ready.wait()
+        return not self.last_error
+
+    async def _lifetime(self) -> None:
+        """连接生命周期属主任务：负责在自身任务内进入并退出传输层上下文栈。"""
+
         try:
-            await self._exit_stack.__aenter__()
-            read_stream, write_stream = await self._connect_transport()
-            session = await self._create_client_session(read_stream, write_stream)
-            self.session = session
-            initialize_result = await session.initialize()
-            self.server_capabilities = getattr(initialize_result, "capabilities", None)
-            self.protocol_version = str(getattr(initialize_result, "protocolVersion", "") or "")
+            try:
+                await self._exit_stack.__aenter__()
+                read_stream, write_stream = await self._connect_transport()
+                session = await self._create_client_session(read_stream, write_stream)
+                self.session = session
+                initialize_result = await session.initialize()
+                self.server_capabilities = getattr(initialize_result, "capabilities", None)
+                self.protocol_version = str(getattr(initialize_result, "protocolVersion", "") or "")
 
-            await self._load_server_features()
-            return True
-
+                await self._load_server_features()
+            finally:
+                # 无论连接成功、失败还是被取消，都在本任务内回退上下文栈
+                self._ready.set()
+            if not self.last_error:
+                await self._close_requested.wait()
         except Exception as exc:
             self.last_error = str(exc).strip() or exc.__class__.__name__
             console.print(f"[warning]⚠️ MCP 服务器 '{self.config.name}' 连接失败: {exc}[/warning]")
-            await self.close()
-            return False
+        finally:
+            await self._aclose_stack_in_owner()
+
+    async def _aclose_stack_in_owner(self) -> None:
+        """在属主任务内关闭上下文栈；任何其他任务的直接关闭都会触发 anyio 任务边界错误。"""
+
+        try:
+            await self._exit_stack.aclose()
+        except Exception as exc:
+            console.print(f"[warning]⚠️ MCP 服务器 '{self.config.name}' 关闭连接失败: {exc}[/warning]")
 
     async def _connect_transport(self) -> tuple[Any, Any]:
         """根据配置建立底层传输连接。
@@ -232,14 +259,20 @@ class MCPConnection:
             )
         else:
             self._http_client = await self._exit_stack.enter_async_context(self._build_http_client())
-            read_stream, write_stream, session_id_getter = await self._exit_stack.enter_async_context(
+            # mcp SDK 各版本返回形状不同：1.x legacy 返回 (read, write, get_session_id)；
+            # 2.x 的 TransportStreams 只有 (read, write)，会话 ID 由传输层内部管理。
+            streams = await self._exit_stack.enter_async_context(
                 streamable_http_client(
                     url=self.config.url,
                     http_client=self._http_client,
                     terminate_on_close=True,
                 )
             )
-        self._session_id_getter = session_id_getter
+            if len(streams) == 3:
+                read_stream, write_stream, session_id_getter = streams
+                self._session_id_getter = session_id_getter
+            else:
+                read_stream, write_stream = streams
         return read_stream, write_stream
 
     async def _connect_sse(self) -> tuple[Any, Any]:
@@ -338,7 +371,7 @@ class MCPConnection:
             ClientSession(
                 read_stream,
                 write_stream,
-                read_timeout_seconds=timedelta(seconds=self.config.read_timeout_seconds),
+                read_timeout_seconds=float(self.config.read_timeout_seconds),
                 sampling_callback=cast(Optional["SamplingFnT"], sampling_callback),
                 elicitation_callback=cast(Optional["ElicitationFnT"], elicitation_callback),
                 list_roots_callback=cast(Optional["ListRootsFnT"], list_roots_callback),
@@ -516,9 +549,11 @@ class MCPConnection:
         tools: list[Any] = []
         cursor: Optional[str] = None
         while True:
-            result = await self.session.list_tools(cursor=cursor)
+            # mcp 2.x：分页游标经 params 传入，续页游标在 next_cursor。
+            params = mcp_types.PaginatedRequestParams(cursor=cursor) if cursor else None
+            result = await self.session.list_tools(params=params)
             tools.extend(list(getattr(result, "tools", []) or []))
-            cursor = getattr(result, "nextCursor", None)
+            cursor = getattr(result, "next_cursor", None)
             if not cursor:
                 break
         return tools
@@ -536,9 +571,10 @@ class MCPConnection:
         prompts: list[Any] = []
         cursor: Optional[str] = None
         while True:
-            result = await self.session.list_prompts(cursor=cursor)
+            params = mcp_types.PaginatedRequestParams(cursor=cursor) if cursor else None
+            result = await self.session.list_prompts(params=params)
             prompts.extend(list(getattr(result, "prompts", []) or []))
-            cursor = getattr(result, "nextCursor", None)
+            cursor = getattr(result, "next_cursor", None)
             if not cursor:
                 break
         return prompts
@@ -556,9 +592,10 @@ class MCPConnection:
         resources: list[Any] = []
         cursor: Optional[str] = None
         while True:
-            result = await self.session.list_resources(cursor=cursor)
+            params = mcp_types.PaginatedRequestParams(cursor=cursor) if cursor else None
+            result = await self.session.list_resources(params=params)
             resources.extend(list(getattr(result, "resources", []) or []))
-            cursor = getattr(result, "nextCursor", None)
+            cursor = getattr(result, "next_cursor", None)
             if not cursor:
                 break
         return resources
@@ -576,9 +613,10 @@ class MCPConnection:
         resource_templates: list[Any] = []
         cursor: Optional[str] = None
         while True:
-            result = await self.session.list_resource_templates(cursor=cursor)
+            params = mcp_types.PaginatedRequestParams(cursor=cursor) if cursor else None
+            result = await self.session.list_resource_templates(params=params)
             resource_templates.extend(list(getattr(result, "resourceTemplates", []) or []))
-            cursor = getattr(result, "nextCursor", None)
+            cursor = getattr(result, "next_cursor", None)
             if not cursor:
                 break
         return resource_templates
@@ -606,7 +644,7 @@ class MCPConnection:
             result = await self.session.call_tool(
                 tool_name,
                 arguments=arguments,
-                read_timeout_seconds=timedelta(seconds=self.config.read_timeout_seconds),
+                read_timeout_seconds=float(self.config.read_timeout_seconds),
             )
         except Exception as exc:
             return ToolExecutionResult(
@@ -618,8 +656,9 @@ class MCPConnection:
 
         content_items = build_tool_content_items(list(getattr(result, "content", []) or []))
         text_parts = [item.text.strip() for item in content_items if item.content_type == "text" and item.text.strip()]
-        structured_content = getattr(result, "structuredContent", None)
-        is_error = bool(getattr(result, "isError", False))
+        # mcp 2.x：CallToolResult 字段为 snake_case（structured_content / is_error）
+        structured_content = result.structured_content
+        is_error = bool(result.is_error)
         history_content = "\n".join(text_parts).strip()
         error_message = history_content if is_error else ""
 
@@ -675,12 +714,30 @@ class MCPConnection:
         return build_resource_read_result(result, uri=uri, server_name=self.config.name)
 
     async def close(self) -> None:
-        """关闭连接并释放资源。"""
+        """关闭连接并释放资源。
 
-        try:
-            await self._exit_stack.aclose()
-        except Exception as exc:
-            console.print(f"[warning]⚠️ MCP 服务器 '{self.config.name}' 关闭连接失败: {exc}[/warning]")
+        实际的上下文栈回退由属主任务执行；等待有界，卡死的收尾以取消兜底。
+        """
+
+        owner = self._owner_task
+        if owner is not None and not owner.done():
+            self._close_requested.set()
+            done, _ = await asyncio.wait({owner}, timeout=10.0)
+            if not done:
+                # 属主任务收尾卡死（如传输层挂起）：取消使其在自身任务内完成栈回退
+                owner.cancel()
+                try:
+                    await owner
+                except asyncio.CancelledError:
+                    pass
+                except Exception as exc:
+                    console.print(f"[warning]⚠️ MCP 服务器 '{self.config.name}' 收尾任务异常: {exc}[/warning]")
+        elif self.session is not None:
+            # 无存活属主（如连接从未成功建立）时的直连清理路径
+            await self._aclose_stack_in_owner()
+        self._owner_task = None
+        self._ready.clear()
+        self._close_requested.clear()
 
         self.session = None
         self.server_capabilities = None

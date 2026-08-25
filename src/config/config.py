@@ -25,6 +25,7 @@ from .legacy_migration import (
 )
 from .model_configs import APIProvider, ModelInfo, ModelTaskConfig
 from .official_configs import (
+    AdminConfig,
     AMemorixConfig,
     BotConfig,
     ChatConfig,
@@ -34,6 +35,8 @@ from .official_configs import (
     EmojiConfig,
     ExperimentalConfig,
     ExpressionConfig,
+    ExternalAgentConfig,
+    ImageGenerationConfig,
     JargonConfig,
     KeywordReactionConfig,
     LogConfig,
@@ -47,6 +50,7 @@ from .official_configs import (
     ResponseSplitterConfig,
     SkillConfig,
     TelemetryConfig,
+    TtsConfig,
     VisualConfig,
     VoiceConfig,
     WebUIConfig,
@@ -68,7 +72,7 @@ MODEL_CONFIG_PATH: Path = (CONFIG_DIR / "model_config.toml").resolve().absolute(
 LEGACY_ENV_PATH: Path = (PROJECT_ROOT / ".env").resolve().absolute()
 A_MEMORIX_LEGACY_CONFIG_PATH: Path = (CONFIG_DIR / "a_memorix.toml").resolve().absolute()
 MMC_VERSION: str = read_project_version(PROJECT_ROOT)
-CONFIG_VERSION: str = "8.14.42"
+CONFIG_VERSION: str = "8.14.43"
 MODEL_CONFIG_VERSION: str = "1.17.9"
 
 logger = get_logger("config")
@@ -154,6 +158,18 @@ class Config(ConfigBase):
 
     skills: SkillConfig = Field(default_factory=SkillConfig)
     """技能配置类"""
+
+    image_generation: ImageGenerationConfig = Field(default_factory=ImageGenerationConfig)
+    """绘图生成组件配置类"""
+
+    tts: TtsConfig = Field(default_factory=TtsConfig)
+    """语音合成组件配置类"""
+
+    external_agent: ExternalAgentConfig = Field(default_factory=ExternalAgentConfig)
+    """管理员专属外部 Agent 配置类"""
+
+    admin: AdminConfig = Field(default_factory=AdminConfig)
+    """管理员配置类"""
 
 
 class ModelConfig(ConfigBase):
@@ -284,11 +300,6 @@ class ConfigManager:
             return
         logger.warning(cls.VLM_NOT_CONFIGURED_WARNING)
 
-    def load_global_config(self) -> Config:
-        config, updated = load_config_from_file(Config, self.bot_config_path, CONFIG_VERSION)
-        if updated:
-            logger.info("bot_config.toml 已自动升级，将继续使用更新后的配置")
-        return config
 
     def load_model_config(self) -> ModelConfig:
         config, updated = load_config_from_file(ModelConfig, self.model_config_path, MODEL_CONFIG_VERSION, True)

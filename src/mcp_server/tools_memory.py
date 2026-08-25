@@ -9,8 +9,7 @@ from __future__ import annotations
 import json
 from typing import Any, Optional
 
-from sqlalchemy import column
-from sqlmodel import select
+from sqlmodel import col, select
 
 from src.chat.message_receive.chat_manager import chat_manager
 from src.common.database.database import get_db_session

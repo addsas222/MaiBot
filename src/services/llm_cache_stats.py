@@ -16,7 +16,7 @@ from src.common.logger import get_logger
 
 logger = get_logger("llm_cache_stats")
 
-FOCUSED_TASK_NAMES = {"replyer", "planner"}
+FOCUSED_TASK_NAMES = {"replyer", "planner", "scenario_analyzer"}
 EXCLUDED_REQUEST_TYPES = {
     "A_Memorix.ChatSummarization",
     "expression.learner",
@@ -367,11 +367,27 @@ def _load_prompt_payload(prompt_text: str | None) -> dict[str, Any] | None:
 
 
 def _extract_prompt_messages(prompt_text: str | None) -> list[dict[str, Any]]:
+    """提取消息级列表，兼容顶层与 request 包装两种 wire 形态。
+
+    Chat Completions 的统计 payload 为 ``{"request": {"messages": [...]}}``，
+    Responses 为 ``{"request": {"input": [...]}}``；顶层直接挂 messages 的旧形态同样支持。
+    """
+
     payload = _load_prompt_payload(prompt_text)
     if payload is None:
         return []
-    messages = payload.get("messages")
-    return [message for message in messages if isinstance(message, dict)] if isinstance(messages, list) else []
+
+    candidates: list[dict[str, Any]] = [payload]
+    request = payload.get("request")
+    if isinstance(request, dict):
+        candidates.append(request)
+
+    for candidate in candidates:
+        for key in ("messages", "input"):
+            messages = candidate.get(key)
+            if isinstance(messages, list):
+                return [message for message in messages if isinstance(message, dict)]
+    return []
 
 
 def _message_fingerprints(messages: list[dict[str, Any]]) -> list[str]:

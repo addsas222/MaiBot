@@ -430,18 +430,19 @@ def _convert_text_only_message_content(
     return content
 
 
-def _convert_user_message_content(message: UserMessageItem) -> str | List[ChatCompletionContentPartParam]:
+def _convert_user_message_content(message: UserMessageItem) -> List[ChatCompletionContentPartParam] | str:
     """将用户消息转换为 OpenAI 兼容内容。
+
+    始终构建并返回内容块数组，仅当数组为空时返回空字符串；
+    固定 wire 形状可避免同一逻辑消息因图片部件增删导致 str/list 翻转，
+    从而破坏 provider 侧的 prompt 前缀缓存。
 
     Args:
         message: 内部统一消息对象。
 
     Returns:
-        str | List[ChatCompletionContentPartParam]: 用户消息内容结构。
+        List[ChatCompletionContentPartParam] | str: 用户消息内容结构。
     """
-    if len(message.parts) == 1 and isinstance(message.parts[0], ContextTextPart):
-        return message.parts[0].text
-
     content: List[ChatCompletionContentPartParam] = []
     for part in message.parts:
         if isinstance(part, ContextTextPart):

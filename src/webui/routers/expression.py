@@ -855,22 +855,6 @@ def build_legacy_preview(db_path: str) -> LegacyExpressionImportPreviewResponse:
     )
 
 
-def get_chat_names_batch(chat_ids: List[str]) -> Dict[str, str]:
-    """批量获取聊天名称。
-
-    Args:
-        chat_ids: 需要查询的聊天会话 ID 列表。
-
-    Returns:
-        Dict[str, str]: 以聊天 ID 为键、显示名称为值的映射。
-    """
-    result = {cid: cid for cid in chat_ids}  # 默认值为原始ID
-    try:
-        for chat_id in chat_ids:
-            result[chat_id] = get_chat_name(chat_id)
-    except Exception as e:
-        logger.warning(f"批量获取聊天名称失败: {e}")
-    return result
 
 
 class ChatInfo(BaseModel):

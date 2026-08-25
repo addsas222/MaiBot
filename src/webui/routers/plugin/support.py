@@ -185,15 +185,6 @@ def coerce_types(schema_part: Dict[str, Any], config_part: Dict[str, Any]) -> No
             coerce_types(schema_val, value)
 
 
-def find_plugin_instance(plugin_id: str) -> Optional[Any]:
-    from src.plugin_runtime.integration import get_plugin_runtime_manager
-
-    manager = get_plugin_runtime_manager()
-    for supervisor in manager.supervisors:
-        registered = supervisor._registered_plugins.get(plugin_id)
-        if registered is not None:
-            return registered
-    return None
 
 
 def get_plugins_dir() -> Path:

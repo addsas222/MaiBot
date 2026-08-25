@@ -151,11 +151,6 @@ def _serialize_tool_call(tool_call: ToolCall) -> dict[str, Any]:
     return payload
 
 
-def serialize_tool_calls_snapshot(tool_calls: Sequence[ToolCall] | None) -> list[dict[str, Any]]:
-    """序列化工具调用列表。"""
-    if not tool_calls:
-        return []
-    return [_serialize_tool_call(tool_call) for tool_call in tool_calls]
 
 
 def deserialize_tool_calls_snapshot(raw_tool_calls: Any) -> list[ToolCall]:

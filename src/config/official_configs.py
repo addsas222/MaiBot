@@ -4193,6 +4193,266 @@ class EmojiCacheCleanupConfig(ConfigBase):
     """未注册表情包文件删掉后，描述缓存记录还能保留多久。"""
 
 
+class OpenAICompatImageBackend(ConfigBase):
+    """OpenAI 兼容绘图后端配置。"""
+
+    base_url: str = Field(default="")
+    """服务根地址，例如 https://api.siliconflow.cn/v1"""
+
+    api_key: str = Field(default="")
+    """鉴权 API Key。"""
+
+    model: str = Field(default="")
+    """模型名，例如 Kwai-Kolors/Kolors、FLUX.1-schnell。"""
+
+    size: str = Field(default="1024x1024")
+    """生成图片尺寸。"""
+
+
+class ComfyUIImageBackend(ConfigBase):
+    """ComfyUI 本地绘图后端配置。"""
+
+    base_url: str = Field(default="http://127.0.0.1:8188")
+    """ComfyUI 服务地址。"""
+
+    workflow_path: str = Field(default="")
+    """API 格式工作流 JSON 文件路径（导出自 ComfyUI 的 Save (API Format)）。"""
+
+    prompt_node_id: str = Field(default="")
+    """正向提示词注入节点 ID，如 "6"。"""
+
+    negative_prompt_node_id: str = Field(default="")
+    """负向提示词注入节点 ID，如 "7"；留空则不注入负向提示词。"""
+
+
+class SDWebUIImageBackend(ConfigBase):
+    """SD-WebUI 本地绘图后端配置。"""
+
+    base_url: str = Field(default="http://127.0.0.1:7860")
+    """SD-WebUI 服务地址（启动时需加 --api）。"""
+
+    negative_prompt: str = Field(default="")
+    """默认负向提示词。"""
+
+    width: int = Field(default=512, ge=64)
+    """生成宽度。"""
+
+    height: int = Field(default=512, ge=64)
+    """生成高度。"""
+
+    steps: int = Field(default=20, ge=1)
+    """采样步数。"""
+
+    cfg_scale: float = Field(default=7.0, ge=1.0)
+    """提示词相关性系数。"""
+
+    sampler_name: str = Field(default="Euler a")
+    """采样器名称。"""
+
+
+class ImageGenerationConfig(ConfigBase):
+    """绘图生成组件配置类"""
+
+    __ui_label__ = "绘图"
+
+    enable: bool = Field(
+        default=False,
+        json_schema_extra={
+            "x-widget": "switch",
+            "label": {
+                "zh_CN": "启用绘图组件",
+                "en_US": "Enable image generation",
+                "ja_JP": "画像生成コンポーネントを有効化",
+            },
+        },
+    )
+    """开启后规划器可以使用 generate_image 工具生成图片。"""
+
+    provider: str = Field(default="openai_compat")
+    """绘图后端：openai_compat / comfyui / sd_webui。"""
+
+    timeout_seconds: float = Field(default=180.0, ge=5.0)
+    """单次生成超时秒数。"""
+
+    output_sub_dir: str = Field(default="draw")
+    """生成图片落盘子目录（位于 data/images 下）。"""
+
+    openai_compat: OpenAICompatImageBackend = Field(default_factory=OpenAICompatImageBackend)
+    """OpenAI 兼容远端后端参数。"""
+
+    comfyui: ComfyUIImageBackend = Field(default_factory=ComfyUIImageBackend)
+    """ComfyUI 本地后端参数。"""
+
+    sd_webui: SDWebUIImageBackend = Field(default_factory=SDWebUIImageBackend)
+    """SD-WebUI 本地后端参数。"""
+
+
+class OpenAICompatTtsBackend(ConfigBase):
+    """OpenAI 兼容 TTS 后端配置。"""
+
+    base_url: str = Field(default="")
+    """服务根地址，例如 https://api.openai.com/v1"""
+
+    api_key: str = Field(default="")
+    """鉴权 API Key。"""
+
+    model: str = Field(default="gpt-4o-mini-tts")
+    """语音合成模型名。"""
+
+    voice: str = Field(default="alloy")
+    """音色。"""
+
+    speed: float = Field(default=1.0, ge=0.25, le=4.0)
+    """语速倍率。"""
+
+
+class GptSovitsTtsBackend(ConfigBase):
+    """GPT-SoVITS 本地 TTS 后端配置（api_v2）。"""
+
+    base_url: str = Field(default="http://127.0.0.1:9880")
+    """api_v2 服务地址。"""
+
+    text_lang: str = Field(default="zh")
+    """待合成文本语言。"""
+
+    ref_audio_path: str = Field(default="")
+    """参考音频路径（服务端可访问的绝对路径）。"""
+
+    prompt_text: str = Field(default="")
+    """参考音频对应的提示文本。"""
+
+    prompt_lang: str = Field(default="zh")
+    """参考音频提示文本语言。"""
+
+    aux_ref_audio_paths: list[str] = Field(default_factory=list)
+    """辅助参考音频路径列表。"""
+
+
+class FishSpeechTtsBackend(ConfigBase):
+    """Fish Speech 本地 TTS 后端配置。"""
+
+    base_url: str = Field(default="http://127.0.0.1:8080")
+    """fish-speech 自托管服务地址。"""
+
+    reference_id: str = Field(default="")
+    """参考音色 ID；与 reference_audio 二选一。"""
+
+    format: str = Field(default="wav")
+    """输出音频格式。"""
+
+
+class TtsConfig(ConfigBase):
+    """语音合成组件配置类"""
+
+    __ui_label__ = "语音合成"
+
+    enable: bool = Field(
+        default=False,
+        json_schema_extra={
+            "x-widget": "switch",
+            "label": {
+                "zh_CN": "启用语音合成组件",
+                "en_US": "Enable TTS component",
+                "ja_JP": "音声合成コンポーネントを有効化",
+            },
+        },
+    )
+    """开启后规划器可以使用 synthesize_voice 工具把文本转成语音发送。"""
+
+    provider: str = Field(default="openai_compat")
+    """TTS 后端：openai_compat / gpt_sovits / fish_speech。"""
+
+    timeout_seconds: float = Field(default=60.0, ge=5.0)
+    """单次合成超时秒数。"""
+
+    max_text_length: int = Field(default=600, ge=1)
+    """单次合成的最大文本长度，超出部分截断。"""
+
+    openai_compat: OpenAICompatTtsBackend = Field(default_factory=OpenAICompatTtsBackend)
+    """OpenAI 兼容远端后端参数。"""
+
+    gpt_sovits: GptSovitsTtsBackend = Field(default_factory=GptSovitsTtsBackend)
+    """GPT-SoVITS 本地后端参数。"""
+
+    fish_speech: FishSpeechTtsBackend = Field(default_factory=FishSpeechTtsBackend)
+    """Fish Speech 本地后端参数。"""
+
+
+class ExternalAgentHttpEndpoint(ConfigBase):
+    """HTTP 形态外部 Agent 端点（OpenAI 兼容 chat/completions）。"""
+
+    name: str = Field(default="")
+    """Agent 名称，/agent 指令调用时使用。"""
+
+    base_url: str = Field(default="")
+    """服务根地址，例如 https://api.deepseek.com/v1"""
+
+    api_key: str = Field(default="")
+    """鉴权 API Key。"""
+
+    model: str = Field(default="")
+    """模型名。"""
+
+    system_prompt: str = Field(default="")
+    """该 Agent 的系统提示词（人设）。"""
+
+    timeout_seconds: float = Field(default=120.0, ge=5.0)
+    """单次请求超时秒数。"""
+
+
+class ExternalAgentCliEndpoint(ConfigBase):
+    """本机 CLI 子进程形态外部 Agent。"""
+
+    name: str = Field(default="")
+    """Agent 名称，/agent 指令调用时使用。"""
+
+    command: list[str] = Field(default_factory=list)
+    """命令与参数列表，例如 ["claude", "-p"] 或 ["opencode", "run"]；问题文本追加在末位参数。"""
+
+    working_dir: str = Field(default="")
+    """子进程工作目录。"""
+
+    timeout_seconds: float = Field(default=300.0, ge=5.0)
+    """子进程超时秒数。"""
+
+    max_output_chars: int = Field(default=4000, ge=100)
+    """回传输出的最大字符数，超出截断。"""
+
+
+class ExternalAgentConfig(ConfigBase):
+    """管理员专属外部 Agent 组件配置类"""
+
+    __ui_label__ = "外部 Agent"
+
+    enable: bool = Field(
+        default=False,
+        json_schema_extra={
+            "x-widget": "switch",
+            "label": {
+                "zh_CN": "启用管理员专属 Agent 功能",
+                "en_US": "Enable admin-only agent feature",
+                "ja_JP": "管理者専用エージェント機能を有効化",
+            },
+        },
+    )
+    """开启后仅管理员可用 /agent 指令调用已配置的外部 Agent。"""
+
+    http_endpoints: list[ExternalAgentHttpEndpoint] = Field(default_factory=list)
+    """HTTP 形态 Agent 端点列表（网络上知名的 OpenAI 兼容服务均可接入）。"""
+
+    cli_endpoints: list[ExternalAgentCliEndpoint] = Field(default_factory=list)
+    """本机 CLI 子进程 Agent 列表（如 claude -p / codex exec / opencode run）。"""
+
+
+class AdminConfig(ConfigBase):
+    """管理员配置类"""
+
+    __ui_label__ = "管理员"
+
+    preset_users: list[str] = Field(default_factory=lambda: ["1234567"])
+    """出厂预设管理员用户 ID 列表；运行时的动态列表存数据库，首次初始化时合并写入。"""
+
+
 class EmojiConfig(ConfigBase):
     """表情包配置类"""
 

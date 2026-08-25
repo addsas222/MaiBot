@@ -14,6 +14,7 @@ import {
   Plug,
   Puzzle,
   Settings,
+  ShieldCheck,
   Smile,
   Store,
   Wifi,
@@ -137,6 +138,7 @@ export const menuSections: MenuSection[] = [
       },
       { icon: ExternalAppsIcon, label: 'sidebar.menu.externalApps', path: '/external-apps' },
       { icon: McpIcon, label: 'sidebar.menu.mcpSettings', path: '/mcp-settings' },
+      { icon: ShieldCheck, label: 'sidebar.menu.adminUsers', path: '/admin-users' },
     ],
   },
   {

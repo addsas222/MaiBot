@@ -385,10 +385,6 @@ class FocusModeManager:
             return
         self._last_read_at_by_session_id[normalized_session_id] = when or datetime.now()
 
-    def get_last_read_at(self, session_id: str) -> Optional[datetime]:
-        """Return the last time Maisaka read a chat in focus mode."""
-
-        return self._last_read_at_by_session_id.get(str(session_id or "").strip())
 
     def resolve_session_from_args(
         self,

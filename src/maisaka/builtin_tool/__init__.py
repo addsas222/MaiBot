@@ -13,6 +13,8 @@ from src.maisaka.focus import focus_mode_manager
 from .context import BuiltinToolRuntimeContext
 from .fetch_history import get_tool_spec as get_fetch_history_tool_spec
 from .fetch_history import handle_tool as handle_fetch_history_tool
+from .generate_image import get_tool_spec as get_generate_image_tool_spec
+from .generate_image import handle_tool as handle_generate_image_tool
 from .query_memory import get_tool_spec as get_query_memory_tool_spec
 from .query_memory import handle_tool as handle_query_memory_tool
 from .query_person_profile import get_tool_spec as get_query_person_profile_tool_spec
@@ -25,6 +27,8 @@ from .send_image import get_tool_spec as get_send_image_tool_spec
 from .send_image import handle_tool as handle_send_image_tool
 from .switch_chat import get_tool_spec as get_switch_chat_tool_spec
 from .switch_chat import handle_tool as handle_switch_chat_tool
+from .synthesize_voice import get_tool_spec as get_synthesize_voice_tool_spec
+from .synthesize_voice import handle_tool as handle_synthesize_voice_tool
 from .tool_search import get_tool_spec as get_tool_search_tool_spec
 from .tool_search import handle_tool as handle_tool_search_tool
 from .view_forward_message import get_tool_spec as get_view_forward_message_tool_spec
@@ -95,6 +99,8 @@ BUILTIN_TOOL_ENTRIES: List[BuiltinToolEntry] = [
     ),
     BuiltinToolEntry("send_emoji", get_send_emoji_tool_spec, handle_send_emoji_tool, stage="action"),
     BuiltinToolEntry("send_image", get_send_image_tool_spec, handle_send_image_tool, stage="action"),
+    BuiltinToolEntry("generate_image", get_generate_image_tool_spec, handle_generate_image_tool, stage="action"),
+    BuiltinToolEntry("synthesize_voice", get_synthesize_voice_tool_spec, handle_synthesize_voice_tool, stage="action"),
     BuiltinToolEntry("tool_search", get_tool_search_tool_spec, handle_tool_search_tool, stage="action"),
     BuiltinToolEntry(
         "fetch_history",
@@ -130,6 +136,11 @@ def _is_builtin_tool_enabled_by_config(entry: BuiltinToolEntry) -> bool:
 
     if entry.name in {"send_emoji", "send_image"} and bool(global_config.experimental.enable_rich_reply):
         return False
+    # 绘图与语音合成组件按各自配置开关暴露。
+    if entry.name == "generate_image":
+        return bool(global_config.image_generation.enable)
+    if entry.name == "synthesize_voice":
+        return bool(global_config.tts.enable)
     if entry.name in {"fetch_history", "switch_chat"}:
         return bool(global_config.experimental.focus_mode)
     return True

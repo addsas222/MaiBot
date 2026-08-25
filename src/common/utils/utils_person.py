@@ -1,6 +1,5 @@
 from typing import Optional
 
-import hashlib
 
 from rich.traceback import install
 from sqlmodel import col, select
@@ -28,12 +27,6 @@ class PersonUtils:
             logger.error(f"查询用户信息失败: {str(e)}")
         return None
 
-    @staticmethod
-    def calculate_person_id(platform: str, user_id: str) -> str:
-        """根据平台和用户ID计算person_id"""
-
-        normalized_platform = platform.split("-", 1)[1] if "-" in platform else platform
-        return hashlib.md5(f"{normalized_platform}_{user_id}".encode("utf-8")).hexdigest()
 
     @staticmethod
     def get_person_info_by_user_id_and_platform(user_id: str, platform: str) -> Optional[MaiPersonInfo]:

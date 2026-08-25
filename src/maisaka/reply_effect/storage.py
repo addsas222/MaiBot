@@ -2,7 +2,7 @@
 
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List
+from typing import List
 
 import gzip
 import json
@@ -179,15 +179,6 @@ class ReplyEffectStorage:
             for row in rows:
                 session.delete(row)
 
-    @staticmethod
-    def read_json(file_path: Path) -> Dict[str, object]:
-        """读取已保存的 JSON 文件。"""
-
-        if file_path.suffix == ".gz":
-            serialized = gzip.decompress(file_path.read_bytes()).decode("utf-8")
-        else:
-            serialized = file_path.read_text(encoding="utf-8")
-        return json.loads(serialized)
 
     def clear_all_records(self) -> tuple[int, int, bool]:
         """删除全部数据库记录与诊断镜像，并回收数据库文件空间。"""

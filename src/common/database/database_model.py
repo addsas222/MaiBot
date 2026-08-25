@@ -583,3 +583,32 @@ class BotPlatformAccount(SQLModel, table=True):
     last_adapter_id: Optional[str] = Field(default=None, max_length=255, nullable=True)
     last_plugin_id: Optional[str] = Field(default=None, max_length=255, nullable=True)
     last_gateway_name: Optional[str] = Field(default=None, max_length=255, nullable=True)
+
+
+class AdminCreatedBy(str, Enum):
+    """管理员条目来源。"""
+
+    PRESET = "PRESET"  # 出厂预设管理员（来自配置 preset_users）
+    PRESET_CURRENT = "PRESET_CURRENT"  # 初始管理员（随程序出厂内置）
+    MANUAL = "MANUAL"  # 运行期通过 /admin add 手动添加
+
+
+class AdminUser(SQLModel, table=True):
+    """动态管理员列表模型"""
+
+    __tablename__ = "admin_users"  # type: ignore
+    __table_args__ = (
+        UniqueConstraint("platform", "user_id", name="uq_admin_users_platform_user"),
+    )
+
+    id: Optional[int] = Field(default=None, primary_key=True)  # 自增主键
+
+    platform: str = Field(default="qq", max_length=32, index=True)  # 平台名，空串表示通配全平台
+    user_id: str = Field(max_length=64, index=True)  # 管理员用户 ID
+    created_by: AdminCreatedBy = Field(
+        default=AdminCreatedBy.MANUAL,
+        sa_column=Column(String(16), nullable=False),
+    )  # 条目来源，PRESET/PRESET_CURRENT/MANUAL
+    note: str = Field(default="", max_length=255)  # 备注，例如"出厂预设"
+    created_timestamp: datetime = Field(default_factory=datetime.now, sa_column=Column(DateTime, index=True))
+    updated_timestamp: datetime = Field(default_factory=datetime.now, sa_column=Column(DateTime, index=True))

@@ -89,57 +89,7 @@ class BuiltinToolRuntimeContext:
             metadata=dict(metadata or {}),
         )
 
-    @staticmethod
-    def normalize_words(raw_words: Any) -> List[str]:
-        """清洗黑话查询词条列表。"""
 
-        if not isinstance(raw_words, list):
-            return []
-
-        normalized_words: List[str] = []
-        seen_words: set[str] = set()
-        for item in raw_words:
-            if not isinstance(item, str):
-                continue
-            word = item.strip()
-            if not word or word in seen_words:
-                continue
-            seen_words.add(word)
-            normalized_words.append(word)
-        return normalized_words
-
-    @staticmethod
-    def normalize_jargon_query_results(raw_results: Any) -> List[Dict[str, object]]:
-        """规范化黑话查询结果列表。"""
-
-        if not isinstance(raw_results, list):
-            return []
-
-        normalized_results: List[Dict[str, object]] = []
-        for raw_item in raw_results:
-            if not isinstance(raw_item, dict):
-                continue
-            word = str(raw_item.get("word") or "").strip()
-            matches = raw_item.get("matches")
-            normalized_matches: List[Dict[str, str]] = []
-            if isinstance(matches, list):
-                for match in matches:
-                    if not isinstance(match, dict):
-                        continue
-                    content = str(match.get("content") or "").strip()
-                    meaning = str(match.get("meaning") or "").strip()
-                    if not content or not meaning:
-                        continue
-                    normalized_matches.append({"content": content, "meaning": meaning})
-
-            normalized_results.append(
-                {
-                    "word": word,
-                    "found": bool(raw_item.get("found", bool(normalized_matches))),
-                    "matches": normalized_matches,
-                }
-            )
-        return normalized_results
 
     @staticmethod
     def post_process_reply_text(
@@ -240,22 +190,6 @@ class BuiltinToolRuntimeContext:
             )
         ]
 
-    async def post_process_reply_message_sequences_async(
-        self,
-        reply_text: str,
-        *,
-        skip_post_process: bool = False,
-        enable_splitter: bool = True,
-        enable_chinese_typo: bool = True,
-    ) -> List[MessageSequence]:
-        """将 replyer 输出处理为可发送组件序列。"""
-
-        return self.post_process_reply_message_sequences(
-            reply_text,
-            skip_post_process=skip_post_process,
-            enable_splitter=enable_splitter,
-            enable_chinese_typo=enable_chinese_typo,
-        )
 
     def post_process_reply_message_sequences(
         self,
@@ -372,25 +306,6 @@ class BuiltinToolRuntimeContext:
             return [raw_value]
         raise ValueError(f"{argument_name} 参数类型无效，应为字符串、对象或列表。")
 
-    async def post_process_rich_reply_message_sequences_async(
-        self,
-        reply_text: str,
-        attachments: Optional[Dict[str, Any]] = None,
-        *,
-        skip_post_process: bool = False,
-        enable_splitter: bool = True,
-        enable_chinese_typo: bool = True,
-    ) -> List[MessageSequence]:
-        """将 replyer 正文和 reply 动作附件参数处理为可发送组件序列。"""
-
-        items = await self.post_process_rich_reply_message_items_async(
-            reply_text,
-            attachments,
-            skip_post_process=skip_post_process,
-            enable_splitter=enable_splitter,
-            enable_chinese_typo=enable_chinese_typo,
-        )
-        return [item.sequence for item in items]
 
     async def post_process_rich_reply_message_items_async(
         self,

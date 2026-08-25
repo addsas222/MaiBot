@@ -397,54 +397,7 @@ class ChineseTypoGenerator:
 
         return "".join(result), correction_suggestion
 
-    @staticmethod
-    def format_typo_info(typo_info):
-        """
-        格式化错别字信息
 
-        参数:
-            typo_info: 错别字信息列表
-
-        返回:
-            格式化后的错别字信息字符串
-        """
-        if not typo_info:
-            return "未生成错别字"
-
-        result = []
-        for orig, typo, orig_py, typo_py, orig_freq, typo_freq in typo_info:
-            # 判断是否为词语替换
-            is_word = " " in orig_py
-            if is_word:
-                error_type = "整词替换"
-            else:
-                tone_error = orig_py[:-1] == typo_py[:-1] and orig_py[-1] != typo_py[-1]
-                error_type = "声调错误" if tone_error else "同音字替换"
-
-            result.append(
-                f"原文：{orig}({orig_py}) [频率：{orig_freq:.2f}] -> "
-                f"替换：{typo}({typo_py}) [频率：{typo_freq:.2f}] [{error_type}]"
-            )
-
-        return "\n".join(result)
-
-    def set_params(self, **kwargs):
-        """
-        设置参数
-
-        可设置参数:
-            error_rate: 单字替换概率
-            min_freq: 最小字频阈值
-            tone_error_rate: 声调错误概率
-            word_replace_rate: 整词替换概率
-            max_freq_diff: 最大允许的频率差异
-        """
-        for key, value in kwargs.items():
-            if hasattr(self, key):
-                setattr(self, key, value)
-                print(f"参数 {key} 已设置为 {value}")
-            else:
-                print(f"警告: 参数 {key} 不存在")
 
 
 def main():

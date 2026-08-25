@@ -768,32 +768,6 @@ class EmojiManager:
         logger.debug(f"[获取表情包] 已注册表情包内存列表未命中，哈希值: {emoji_hash}")
         return None
 
-    def get_emoji_by_hash_from_db(self, emoji_hash: str) -> Optional[MaiEmoji]:
-        """
-        根据哈希值从数据库获取表情包对象
-
-        Args:
-            emoji_hash (str): 表情包的哈希值
-        Returns:
-            return (Optional[MaiEmoji]): 返回表情包对象，如果未找到则返回 None
-        """
-        try:
-            with get_db_session() as session:
-                statement = (
-                    select(Images)
-                    .filter_by(image_hash=emoji_hash, image_type=ImageType.EMOJI, is_banned=False)
-                    .limit(1)
-                )
-                if image_record := session.exec(statement).first():
-                    if image_record.no_file_flag:
-                        logger.warning(f"[数据库] 表情包记录 {emoji_hash} 标记为文件不存在，无法获取表情包对象")
-                        return None
-                    return MaiEmoji.from_db_instance(image_record)
-                logger.info(f"[数据库] 未找到哈希值为 {emoji_hash} 的表情包记录")
-                return None
-        except Exception as e:
-            logger.error(f"[数据库] 获取表情包时出错: {e}")
-            return None
 
     def ban_emoji(self, emoji: MaiEmoji) -> bool:
         """封禁表情包，将表情包的 is_banned 字段设置为 True，并从表情包列表中移除"""

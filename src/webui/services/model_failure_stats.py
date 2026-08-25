@@ -108,8 +108,3 @@ def get_model_failure_stats(force_refresh: bool = False) -> Dict[str, Any]:
         return dict(stats)
 
 
-def invalidate_model_failure_stats_cache() -> None:
-    """配置重载等场景下清空缓存。"""
-    global _cached_stats, _cached_at
-    _cached_stats = None
-    _cached_at = 0.0

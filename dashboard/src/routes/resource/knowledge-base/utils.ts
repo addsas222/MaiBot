@@ -88,7 +88,7 @@ export function getImportStepLabel(step: string): string {
 export function getImportStatusVariant(
   status: string
 ): 'default' | 'secondary' | 'destructive' | 'outline' {
-  if (status === 'failed') {
+  if (status === 'failed' || status === 'interrupted') {
     return 'destructive'
   }
   if (status === 'completed') {

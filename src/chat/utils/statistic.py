@@ -527,45 +527,6 @@ class StatisticOutputTask(AsyncTask):
         except Exception as e:
             logger.exception(f"输出统计数据过程中发生异常，错误信息：{e}")
 
-    async def run_async_background(self):
-        """
-        备选方案：完全异步后台运行统计输出
-        使用此方法可以让统计任务完全非阻塞
-        """
-
-        async def _async_collect_and_output():
-            try:
-                import concurrent.futures
-
-                now = datetime.now()
-                self._ensure_all_time_start_time(now)
-                loop = asyncio.get_event_loop()
-
-                with concurrent.futures.ThreadPoolExecutor() as executor:
-                    logger.info("正在后台收集统计数据...")
-
-                    stats = await loop.run_in_executor(executor, self._collect_all_statistics, now)
-                    try:
-                        await refresh_dashboard_statistics_cache()
-                    except Exception as e:
-                        logger.warning(f"刷新 WebUI 统计缓存失败，将继续生成 HTML 报告: {e}")
-                    logger.info("统计数据收集完成")
-
-                    # 创建并发的输出任务
-                    output_tasks = [
-                        loop.run_in_executor(executor, self._statistic_console_output, stats, now),
-                        loop.run_in_executor(executor, self._generate_html_report, stats, now),
-                    ]
-
-                    # 等待所有输出任务完成
-                    await asyncio.gather(*output_tasks)
-
-                logger.info("统计数据后台输出完成")
-            except Exception as e:
-                logger.exception(f"后台统计数据输出过程中发生异常：{e}")
-
-        # 创建后台任务，立即返回
-        asyncio.create_task(_async_collect_and_output())
 
     # -- 以下为统计数据收集方法 --
 

@@ -2,7 +2,6 @@
 
 from typing import Any
 
-from src.llm_models.payload_content.native_tool import NativeToolCallSummary
 from src.llm_models.payload_content.tool_option import (
     TOOL_CALL_SOURCE_EXTRA_KEY,
     TOOL_CALL_SOURCE_REASONING,
@@ -82,25 +81,6 @@ def format_tool_call_for_display(tool_call: Any) -> dict[str, Any]:
     }
 
 
-def format_native_tool_call_for_display(tool_call: NativeToolCallSummary) -> dict[str, Any]:
-    """将 Provider 原生工具摘要投影为现有推理记录使用的工具调用结构。"""
-
-    arguments: dict[str, Any] = {}
-    if tool_call.action_type:
-        arguments["action_type"] = tool_call.action_type
-    if tool_call.status:
-        arguments["status"] = tool_call.status
-    if tool_call.details:
-        arguments["details"] = list(tool_call.details)
-    if tool_call.source_count:
-        arguments["source_count"] = tool_call.source_count
-    return {
-        "id": tool_call.call_id,
-        "name": tool_call.tool_type,
-        "arguments": arguments,
-        "source": _TOOL_CALL_SOURCE_PROVIDER,
-        "source_label": "Provider 原生调用",
-    }
 
 
 def _normalize_tool_call_source(source: Any) -> str:

@@ -373,11 +373,6 @@ def _is_safe_name(name: str) -> bool:
     return bool(name) and not path.is_absolute() and ".." not in path.parts and len(path.parts) == 1
 
 
-def _list_stage_names() -> list[str]:
-    if not PROMPT_LOG_ROOT.is_dir():
-        return []
-
-    return sorted(path.name for path in PROMPT_LOG_ROOT.iterdir() if path.is_dir() and _is_safe_name(path.name))
 
 
 def _list_stage_infos() -> list[ReasoningPromptStageInfo]:
@@ -1275,8 +1270,6 @@ def _extract_output_text_from_json_payload(payload: dict[str, Any]) -> str | Non
     return " ".join(line.strip() for line in derived_text.splitlines() if line.strip()) or None
 
 
-def _extract_output_preview_from_json(file_path: Path, max_chars: int = 160) -> str | None:
-    return _extract_output_preview_from_json_payload(_load_prompt_json(file_path), max_chars=max_chars)
 
 
 def _extract_output_preview_from_json_payload(payload: dict[str, Any], max_chars: int = 160) -> str | None:
@@ -1323,10 +1316,6 @@ def _extract_action_names_from_tool_calls(raw_tool_calls: Any) -> list[str]:
     return action_names
 
 
-def _extract_action_preview_from_json(file_path: Path, max_actions: int = 4) -> str | None:
-    """从 prompt JSON 预览中提取动作摘要。"""
-
-    return _extract_action_preview_from_json_payload(_load_prompt_json(file_path), max_actions=max_actions)
 
 
 def _extract_action_preview_from_json_payload(payload: dict[str, Any], max_actions: int = 4) -> str | None:

@@ -3,6 +3,7 @@
 from copy import deepcopy
 from typing import Any, Dict, List, Optional
 
+import asyncio
 import os
 import traceback
 
@@ -39,6 +40,32 @@ PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../..
 
 # 配置主程序日志格式
 logger = get_logger("chat")
+
+# 内置管理员指令常量：动态管理员列表维护与外部 Agent 调用入口
+ADMIN_COMMAND = "/admin"
+AGENT_COMMAND = "/agent"
+
+# /agent 回复超长时的截断长度
+_AGENT_REPLY_MAX_CHARS = 2000
+
+# 管理员种子懒加载状态：进程内仅执行一次，防止并发重复种
+_admins_seeded = False
+_admins_seed_lock = asyncio.Lock()
+
+
+async def _ensure_admins_seeded() -> None:
+    """惰性执行一次出厂管理员种子写入；模块级 Once 模式，并发调用安全。"""
+
+    global _admins_seeded
+    if _admins_seeded:
+        return
+    async with _admins_seed_lock:
+        if _admins_seeded:
+            return
+        from src.services import admin_user_service
+
+        await admin_user_service.ensure_seed_admins()
+        _admins_seeded = True
 
 
 def register_chat_hook_specs(registry: HookSpecRegistry) -> List[HookSpec]:
@@ -374,6 +401,12 @@ class ChatBot:
         if command_text in {"/offline", "/online"}:
             return True
 
+        # 内置管理员指令：候选判定不区分发送者，权限门控在对应处理方法内完成
+        if command_text == ADMIN_COMMAND or command_text.startswith(f"{ADMIN_COMMAND} "):
+            return True
+        if command_text == AGENT_COMMAND or command_text.startswith(f"{AGENT_COMMAND} "):
+            return True
+
         message_is_local_operator = is_local_operator(
             message.platform,
             message.message_info.additional_config,
@@ -491,6 +524,150 @@ class ChatBot:
             f"已通过 /clear 清空 Maisaka 历史上下文: "
             f"session_id={message.session_id} 运行时是否存在={had_runtime}"
         )
+        return True
+
+    async def _process_admin_command(self, message: SessionMessage) -> bool:
+        """处理内置 ``/admin`` 指令：查看与维护动态管理员列表。
+
+        Args:
+            message: 当前会话消息。
+
+        Returns:
+            bool: ``True`` 表示消息已被本指令消费。
+        """
+
+        command_text = (message.processed_plain_text or "").strip()
+        if command_text != ADMIN_COMMAND and not command_text.startswith(f"{ADMIN_COMMAND} "):
+            return False
+
+        await _ensure_admins_seeded()
+
+        from src.services import admin_user_service
+        from src.services.send_service import text_to_stream
+
+        async def _reply(reply_text: str) -> None:
+            self._mark_command_message(message, intercept_message_level=1)
+            await self._store_intercepted_command_message(message)
+            await text_to_stream(reply_text, message.session_id, storage_message=False)
+
+        sender_user_id = message.message_info.user_info.user_id
+        if not await admin_user_service.is_admin(message.platform, sender_user_id):
+            await _reply("该指令仅管理员可用")
+            logger.info(f"已拒绝非管理员的 /admin 指令: platform={message.platform} user_id={sender_user_id}")
+            return True
+
+        parts = command_text.split()
+        sub_command = parts[1] if len(parts) > 1 else ""
+
+        if sub_command == "list":
+            admins = await admin_user_service.list_admins()
+            lines = [f"当前管理员共 {len(admins)} 人:"]
+            for item in admins:
+                platform_label = item["platform"] or "*"
+                note_suffix = f"（{item['note']}）" if item["note"] else ""
+                lines.append(f"- [{platform_label}] {item['user_id']} {item['created_by']}{note_suffix}")
+            reply_text = "\n".join(lines)
+        elif sub_command == "add":
+            target_user_id = parts[2] if len(parts) > 2 else ""
+            if not target_user_id:
+                reply_text = "用法: /admin add <user_id>"
+            else:
+                try:
+                    added = await admin_user_service.add_admin(target_user_id, platform=message.platform)
+                except ValueError as e:
+                    reply_text = f"添加管理员失败: {e}"
+                else:
+                    total = len(await admin_user_service.list_admins())
+                    reply_text = (
+                        f"已添加管理员 {added['user_id']}（平台 {added['platform'] or '*'}），当前共 {total} 人"
+                    )
+        elif sub_command == "remove":
+            target_user_id = parts[2] if len(parts) > 2 else ""
+            if not target_user_id:
+                reply_text = "用法: /admin remove <user_id>"
+            else:
+                try:
+                    await admin_user_service.remove_admin(target_user_id, platform=message.platform)
+                except ValueError as e:
+                    reply_text = f"移除管理员失败: {e}"
+                else:
+                    total = len(await admin_user_service.list_admins())
+                    reply_text = f"已移除管理员 {target_user_id}，当前共 {total} 人"
+        else:
+            reply_text = "用法: /admin list | /admin add <user_id> | /admin remove <user_id>"
+
+        await _reply(reply_text)
+        return True
+
+    async def _process_agent_command(self, message: SessionMessage) -> bool:
+        """处理内置 ``/agent`` 指令：管理员专属外部 Agent 调用入口。
+
+        Args:
+            message: 当前会话消息。
+
+        Returns:
+            bool: ``True`` 表示消息已被本指令消费。
+        """
+
+        command_text = (message.processed_plain_text or "").strip()
+        if command_text != AGENT_COMMAND and not command_text.startswith(f"{AGENT_COMMAND} "):
+            return False
+
+        await _ensure_admins_seeded()
+
+        from src.services import admin_user_service, external_agent_service
+        from src.services.send_service import text_to_stream
+
+        async def _reply(reply_text: str) -> None:
+            self._mark_command_message(message, intercept_message_level=1)
+            await self._store_intercepted_command_message(message)
+            await text_to_stream(reply_text, message.session_id, storage_message=False)
+
+        sender_user_id = message.message_info.user_info.user_id
+        if not await admin_user_service.is_admin(message.platform, sender_user_id):
+            await _reply("该指令仅管理员可用")
+            logger.info(f"已拒绝非管理员的 /agent 指令: platform={message.platform} user_id={sender_user_id}")
+            return True
+
+        if not global_config.external_agent.enable:
+            await _reply("外部Agent功能未启用，请在配置文件 external_agent.enable 中开启后重启生效")
+            return True
+
+        argument_text = command_text[len(AGENT_COMMAND) :].strip()
+        if not argument_text:
+            agents = await external_agent_service.list_agents()
+            if not agents:
+                await _reply("尚未配置任何外部 Agent，请在配置文件 external_agent 段添加后重启生效")
+                return True
+            lines = ["可用外部 Agent:"]
+            for item in agents:
+                summary = str(item.get("model") or "").strip() or " ".join(item.get("command") or [])
+                summary_suffix = f" | {summary}" if summary else ""
+                lines.append(f"- {item['name']} ({item['kind']}{summary_suffix})")
+            await _reply("\n".join(lines))
+            return True
+
+        parts = argument_text.split(None, 1)
+        agent_name = parts[0]
+        question = parts[1].strip() if len(parts) > 1 else ""
+        if not question:
+            await _reply("用法: /agent <名称> <问题内容>；或发送 /agent 查看列表")
+            return True
+
+        try:
+            result = await external_agent_service.run_agent(agent_name, question)
+        except Exception as e:
+            logger.error(f"/agent 执行失败: name={agent_name} 错误={e}", exc_info=True)
+            # 异常信息原文回复给管理员，完整暴露不吞错
+            await _reply(f"外部Agent执行失败: {e}")
+            return True
+
+        if len(result) > _AGENT_REPLY_MAX_CHARS:
+            result = result[:_AGENT_REPLY_MAX_CHARS] + "…"
+        logger.info(
+            f"/agent 执行完成: name={agent_name} user_id={sender_user_id} 回复长度={len(result)}"
+        )
+        await _reply(result)
         return True
 
     async def _process_adapter_lifecycle_command(self, message: SessionMessage) -> bool:
@@ -833,6 +1010,13 @@ class ChatBot:
             # 调试用内置指令需要先写入持久化清理边界，再停止当前运行时，
             # 避免并发消息或进程重启重新带回清理前的短期上下文。
             if await self._process_clear_context_command(message):
+                return
+
+            # 内置管理员指令：置于插件命令链之前，命中即拦截
+            if await self._process_admin_command(message):
+                return
+
+            if await self._process_agent_command(message):
                 return
 
             # 命令处理 - 使用新插件系统检查并处理命令。

@@ -1404,20 +1404,6 @@ class LLMOrchestrator:
         """
         return normalize_tool_options(tools)
 
-    @staticmethod
-    def _extract_reasoning(content: str) -> Tuple[str, str]:
-        """提取 `<think>` 思维链内容。
-
-        Args:
-            content: 原始模型输出文本。
-
-        Returns:
-            Tuple[str, str]: `(正文内容, 推理内容)`。
-        """
-        match = re.search(r"(?:<think>)?(.*?)</think>", content, re.DOTALL)
-        content = re.sub(r"(?:<think>)?.*?</think>", "", content, flags=re.DOTALL, count=1).strip()
-        reasoning = match[1].strip() if match else ""
-        return content, reasoning
 
     @staticmethod
     def _get_original_error_info(e: Exception) -> str:

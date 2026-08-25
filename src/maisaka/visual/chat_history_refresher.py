@@ -1,7 +1,7 @@
 """Maisaka 聊天历史视觉占位刷新器。"""
 
+import time
 from typing import Awaitable, Callable, Optional
-
 from sqlmodel import select
 
 from src.chat.message_receive.message import SessionMessage
@@ -19,8 +19,32 @@ logger = get_logger("maisaka_chat_history_visual_refresher")
 BuildHistoryMessage = Callable[[SessionMessage, str], Awaitable[Optional[LLMContextMessage]]]
 BuildVisibleText = Callable[[SessionMessage, str], str]
 
+_PENDING_IMAGE_TTL_SECONDS = 600.0
+_PENDING_IMAGE_MAX_HASHES = 256
+_pending_image_registered_at: dict[str, float] = {}
+
 _PLANNER_PENDING_IMAGE_HASHES: set[str] = set()
 _MONITOR_PENDING_IMAGE_REFRESHERS: dict[str, list[Callable[[str], None]]] = {}
+
+
+def _prune_stale_pending_images() -> None:
+    """淘汰超时或超额的待识别登记，防止识图失败时闭包永久钉住消息与运行时。"""
+
+    now = time.monotonic()
+    stale = [h for h, ts in _pending_image_registered_at.items() if now - ts > _PENDING_IMAGE_TTL_SECONDS]
+    for h in stale:
+        _PLANNER_PENDING_IMAGE_HASHES.discard(h)
+        _MONITOR_PENDING_IMAGE_REFRESHERS.pop(h, None)
+        _pending_image_registered_at.pop(h, None)
+
+    overflow = len(_pending_image_registered_at) - _PENDING_IMAGE_MAX_HASHES
+    for h in sorted(_pending_image_registered_at, key=lambda k: _pending_image_registered_at[k])[:max(overflow, 0)]:
+        _PLANNER_PENDING_IMAGE_HASHES.discard(h)
+        _MONITOR_PENDING_IMAGE_REFRESHERS.pop(h, None)
+        _pending_image_registered_at.pop(h, None)
+
+    if stale:
+        logger.debug(f"已淘汰 {len(stale)} 条超时图片识别登记（识图未在 TTL 内完成）")
 
 
 async def refresh_chat_history_visual_placeholders(
@@ -147,7 +171,19 @@ def register_monitor_image_placeholder_refresh(image_hash: str, refresher: Calla
     if not image_hash:
         return
 
+    _prune_stale_pending_images()
+
     _MONITOR_PENDING_IMAGE_REFRESHERS.setdefault(image_hash, []).append(refresher)
+    _pending_image_registered_at[image_hash] = time.monotonic()
+
+    # 硬上限：插入后若超额，按登记时间淘汰最旧（刚登记的拥有最新时间戳，不会被选中）
+    overflow = len(_pending_image_registered_at) - _PENDING_IMAGE_MAX_HASHES
+    for stale_hash in sorted(_pending_image_registered_at, key=lambda k: _pending_image_registered_at[k])[
+        : max(overflow, 0)
+    ]:
+        _PLANNER_PENDING_IMAGE_HASHES.discard(stale_hash)
+        _MONITOR_PENDING_IMAGE_REFRESHERS.pop(stale_hash, None)
+        _pending_image_registered_at.pop(stale_hash, None)
 
 
 def _is_vlm_task_configured() -> bool:

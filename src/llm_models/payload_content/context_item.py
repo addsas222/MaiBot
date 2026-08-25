@@ -181,11 +181,6 @@ class ProviderReplayFragment:
             raise ValueError("Provider replay payload 必须是 JSON object")
         return payload
 
-    @property
-    def byte_size(self) -> int:
-        """返回回放片段的实际字节数。"""
-
-        return len(self.payload_json)
 
 
 @dataclass(frozen=True, slots=True)

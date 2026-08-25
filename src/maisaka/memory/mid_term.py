@@ -298,26 +298,6 @@ def build_mid_term_memory_preview_text(payload: dict[str, Any]) -> str:
     )
 
 
-def build_mid_term_memory_full_text(payload: dict[str, Any]) -> str:
-    """构造聊天回想的完整内容。"""
-
-    time_range = str(payload.get("time_range") or "未知").strip()
-    participants = _coerce_str_list(payload.get("participants"))
-    summary = _resolve_payload_summary(payload) or "无"
-    recall_cues = _extract_recall_cue_texts(payload)
-    recall_cue_lines = ["召回线索:"] + [f"- {cue}" for cue in recall_cues]
-    return "\n".join(
-        [
-            "【聊天回想】",
-            f"时间范围: {time_range}",
-            f"参与人物: {'、'.join(participants) if participants else '未知'}",
-            "",
-            "summary:",
-            summary,
-            "",
-            *(recall_cue_lines if recall_cues else []),
-        ]
-    ).strip()
 
 
 async def build_mid_term_memory_reference_message(

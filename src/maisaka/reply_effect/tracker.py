@@ -272,10 +272,6 @@ class ReplyEffectTracker:
         for effect_id in ready_effect_ids:
             await self._schedule_evaluation(effect_id, "session_followups_limit")
 
-    async def finalize_all(self, reason: str = "runtime_stop") -> None:
-        for effect_id in list(self._pending_records):
-            await self._schedule_evaluation(effect_id, reason)
-        await self.wait_for_idle()
 
     async def stop(self) -> None:
         """短暂排空评审任务，并将未走完观察窗口的记录结算为不完整。"""

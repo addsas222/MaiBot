@@ -1031,33 +1031,6 @@ class PromptCLIVisualizer:
             preview_access=preview_access,
         )
 
-    @classmethod
-    def build_text_access_panel(
-        cls,
-        content: str,
-        *,
-        category: str,
-        chat_id: str,
-        request_kind: str,
-        subtitle: str,
-        output_title: str = "输出结果",
-        output_items: Sequence[Any] = (),
-        metadata: Mapping[str, Any] | None = None,
-        generation_attempts: Sequence[GenerationAttemptInput] = (),
-    ) -> RenderableType:
-        """构建文本型 Prompt 的折叠入口内容。"""
-
-        return cls.build_text_preview_access(
-            content,
-            category=category,
-            chat_id=chat_id,
-            request_kind=request_kind,
-            subtitle=subtitle,
-            output_title=output_title,
-            output_items=output_items,
-            metadata=metadata,
-            generation_attempts=generation_attempts,
-        ).body
 
     @classmethod
     def build_text_preview_access(

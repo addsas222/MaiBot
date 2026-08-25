@@ -352,6 +352,13 @@ const mcpSettingsRoute = createRoute({
   component: lazyRouteComponent(() => import('./routes/mcp-settings'), 'MCPSettingsPage'),
 })
 
+// 管理员管理路由
+const adminUsersRoute = createRoute({
+  getParentRoute: () => protectedRoute,
+  path: '/admin-users',
+  component: lazyRouteComponent(() => import('./routes/admin-users'), 'AdminUsersPage'),
+})
+
 // 数据迁移与备份路由
 const dataTransferRoute = createRoute({
   getParentRoute: () => protectedRoute,
@@ -442,6 +449,7 @@ const routeTree = rootRoute.addChildren([
     externalAppPageRoute,
     pluginMirrorsRoute,
     mcpSettingsRoute,
+    adminUsersRoute,
     dataTransferRoute,
     logsRoute,
     reasoningProcessRoute,

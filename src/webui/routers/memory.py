@@ -18,11 +18,13 @@ from src.A_memorix.runtime_registry import get_runtime_kernel
 from src.chat.message_receive.chat_manager import chat_manager as _chat_manager
 from src.common.database.database import get_db_session
 from src.common.database.database_model import ChatSession, Messages, PersonInfo
+from src.common.logger import get_logger
 from src.person_info.person_info import resolve_person_id_for_memory
 from src.services.memory_service import MemorySearchResult, memory_service
 from src.webui.dependencies import require_auth
 
 
+logger = get_logger("webui.memory")
 router = APIRouter(prefix="/memory", tags=["memory"], dependencies=[Depends(require_auth)])
 compat_router = APIRouter(prefix="/api", tags=["memory-compat"], dependencies=[Depends(require_auth)])
 STAGING_ROOT: Optional[Path] = None
@@ -2989,7 +2991,15 @@ async def _import_list(limit: int) -> dict:
     settings_payload = await memory_service.import_admin(action="get_settings")
     settings = settings_payload.get("settings") if isinstance(settings_payload.get("settings"), dict) else {}
     listing.setdefault("success", True)
-    listing.setdefault("items", [])
+    items = listing.setdefault("items", [])
+
+    # 合并接入层日记中的中断/失败保留条目：宿主崩溃后这些任务在宿主侧已失忆，
+    # 但运营者必须仍能看到中断事实并允许删除。
+    known_ids = {str(item.get("task_id") or "") for item in items}
+    for entry in memory_service.import_journal_snapshot():
+        if str(entry.get("task_id") or "") not in known_ids:
+            items.append(entry)
+
     listing["settings"] = settings
     return listing
 
@@ -3009,7 +3019,13 @@ async def _import_chunks(task_id: str, file_id: str, offset: int, limit: int) ->
 
 
 async def _import_cancel(task_id: str) -> dict:
-    return await memory_service.import_admin(action="cancel", task_id=task_id)
+    response = await memory_service.import_admin(action="cancel", task_id=task_id)
+    if isinstance(response, dict) and response.get("success"):
+        return response
+    # 宿主已失忆的中断任务（如进程重启后）：删除日记保留条目即视为取消完成
+    if memory_service.import_journal_drop(task_id):
+        return {"success": True, "task_id": task_id, "status": "cancelled"}
+    return response
 
 
 async def _import_retry(task_id: str, payload: dict[str, Any]) -> dict:

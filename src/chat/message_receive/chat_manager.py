@@ -29,9 +29,6 @@ class SessionContext:
         self.message = message
         self.template_name: Optional[str] = None
 
-    def update_template(self, template_name: str):
-        """更新当前使用的回复模板"""
-        self.template_name = template_name
 
 
 class BotChatSession(MaiChatSession):
@@ -332,33 +329,6 @@ class ChatManager:
 
         return options
 
-    def get_session_by_info(
-        self,
-        platform: str,
-        user_id: Optional[str] = None,
-        group_id: Optional[str] = None,
-        account_id: Optional[str] = None,
-        scope: Optional[str] = None,
-    ) -> Optional[BotChatSession]:
-        """根据平台、用户ID和群ID获取对应的会话
-
-        Args:
-            platform: 平台
-            user_id: 用户ID
-            group_id: 群ID（如果是群聊）
-            account_id: 平台账号 ID
-            scope: 路由作用域
-        Returns:
-            return (Optional[BotChatSession]): 会话对象，如果不存在则返回None
-        """
-        session_id = SessionUtils.calculate_session_id(
-            platform,
-            user_id=user_id,
-            group_id=group_id,
-            account_id=account_id,
-            scope=scope,
-        )
-        return self.get_session_by_session_id(session_id)
 
     def resolve_sessions_by_target(
         self,

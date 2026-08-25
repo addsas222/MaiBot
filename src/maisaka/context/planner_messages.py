@@ -29,6 +29,9 @@ def build_planner_prefix(
 ) -> str:
     """构造 Maisaka 规划器使用的统一消息前缀。
 
+    属性顺序设计：稳定属性（time/user/group_card/is_self_message）前置，易变属性（chat_id/quote/msg_id）后置；
+    稳定的前缀可提升多轮调用间的 prompt 前缀缓存命中。
+
     Args:
         timestamp: 消息时间。
         user_name: 展示给规划器的用户名。
@@ -44,9 +47,16 @@ def build_planner_prefix(
         str: 拼接完成的规划器前缀。
     """
 
-    message_attrs: list[str] = []
-    if include_message_id:
-        message_attrs.append(f'msg_id="{escape(message_id or "", quote=True)}"')
+    message_attrs: list[str] = [
+        f'time="{escape(timestamp.strftime("%H:%M:%S"), quote=True)}"',
+        f'user="{escape(user_name, quote=True)}"',
+    ]
+
+    normalized_group_card = group_card.strip()
+    if normalized_group_card:
+        message_attrs.append(f'group_card="{escape(normalized_group_card, quote=True)}"')
+    if is_self_message:
+        message_attrs.append('is_self_message="true"')
 
     if include_chat_id:
         normalized_chat_id = str(chat_id or "").strip()
@@ -57,18 +67,8 @@ def build_planner_prefix(
     if normalized_quote:
         message_attrs.append(f'quote="{escape(normalized_quote, quote=True)}"')
 
-    message_attrs.extend(
-        [
-            f'time="{escape(timestamp.strftime("%H:%M:%S"), quote=True)}"',
-            f'user="{escape(user_name, quote=True)}"',
-        ]
-    )
-
-    normalized_group_card = group_card.strip()
-    if normalized_group_card:
-        message_attrs.append(f'group_card="{escape(normalized_group_card, quote=True)}"')
-    if is_self_message:
-        message_attrs.append('is_self_message="true"')
+    if include_message_id:
+        message_attrs.append(f'msg_id="{escape(message_id or "", quote=True)}"')
     return f"<message {' '.join(message_attrs)}>\n"
 
 

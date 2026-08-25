@@ -14,7 +14,7 @@ MCP stdio 协议规定 stdout 仅可承载 JSON-RPC 消息，所有日志/状态
 
 注意：本模块依赖 ``mcp.client.stdio`` 中的若干非公开符号
 (``_create_platform_compatible_process``、``_get_executable_command``、
-``_terminate_process_tree``、``PROCESS_TERMINATION_TIMEOUT``)。
+``_parse_line``、``_terminate_process_tree``、``PROCESS_TERMINATION_TIMEOUT``)。
 SDK 升级若调整这些符号，此处会在首次连接时立刻报错暴露问题。
 """
 
@@ -29,16 +29,15 @@ from anyio.streams.text import TextReceiveStream
 import anyio
 import anyio.lowlevel
 
-from mcp import types
 from mcp.client.stdio import (
     PROCESS_TERMINATION_TIMEOUT,
     StdioServerParameters,
     _create_platform_compatible_process,
     _get_executable_command,
+    _parse_line,
     _terminate_process_tree,
     get_default_environment,
 )
-from mcp.shared.message import SessionMessage
 
 logger = logging.getLogger(__name__)
 
@@ -114,15 +113,16 @@ async def tolerant_stdio_client(
                                 line[:_MAX_GARBAGE_PREVIEW],
                             )
                             continue
-                        try:
-                            message = types.JSONRPCMessage.model_validate_json(line)
-                        except Exception:
+                        # 复用官方 2.x 行解析器（含 Union 适配与 SessionMessage 包装）；
+                        # 本模块唯一差异：解析失败不向 read_stream 注入异常，而是告警后丢弃。
+                        parsed = _parse_line(line)
+                        if isinstance(parsed, BaseException):
                             logger.warning(
                                 "Dropped malformed JSON-RPC line from MCP stdio server: %r",
                                 line[:_MAX_GARBAGE_PREVIEW],
                             )
                             continue
-                        await read_stream_writer.send(SessionMessage(message))
+                        await read_stream_writer.send(parsed)
         except anyio.ClosedResourceError:
             await anyio.lowlevel.checkpoint()
 
@@ -132,7 +132,7 @@ async def tolerant_stdio_client(
             async with write_stream_reader:
                 async for session_message in write_stream_reader:
                     json_payload = session_message.message.model_dump_json(
-                        by_alias=True, exclude_none=True
+                        by_alias=True, exclude_unset=True
                     )
                     await process.stdin.send(
                         (json_payload + "\n").encode(

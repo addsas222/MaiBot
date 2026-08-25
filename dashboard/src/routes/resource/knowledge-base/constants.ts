@@ -44,6 +44,7 @@ export const IMPORT_STATUS_TEXT: Record<string, string> = {
   cancelled: '已取消',
   completed: '已完成',
   completed_with_errors: '完成（有错误）',
+  interrupted: '已中断',
   failed: '失败',
 }
 
@@ -61,6 +62,7 @@ export const IMPORT_STEP_TEXT: Record<string, string> = {
   switching: '切换中',
   cancel_requested: '取消中',
   cancelled: '已取消',
+  interrupted: '已中断',
   completed: '已完成',
   completed_with_errors: '完成（有错误）',
   failed: '失败',

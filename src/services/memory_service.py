@@ -1,6 +1,10 @@
 from __future__ import annotations
 
+import json
+import os
+import threading
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from src.A_memorix.host_service import a_memorix_host_service
@@ -8,6 +12,114 @@ from src.common.logger import get_logger
 
 
 logger = get_logger("memory_service")
+
+# A_memorix 的任务队列只存在于宿主进程内存中，进程崩溃即失忆。
+# 本日记层在 MaiBot 接入侧记录"我们发起过哪些导入"，使中断可被如实展示与清理。
+_IMPORT_SUCCESS_STATUSES = {"completed", "completed_with_errors"}
+_IMPORT_KEEP_STATUSES = {"failed", "cancelled", "interrupted"}
+
+
+class ImportTaskJournal:
+    """导入任务持久日记：意外中断后保留进度痕迹，成功才清除，支持手动删除。"""
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._orphans_marked = False
+
+    def _path(self) -> Path:
+        return a_memorix_host_service.get_runtime_data_dir() / "imports" / "maibot-task-journal.json"
+
+    def _load(self) -> list[dict]:
+        try:
+            payload = json.loads(self._path().read_text(encoding="utf-8"))
+        except FileNotFoundError:
+            return []
+        except Exception:
+            logger.warning("导入任务日记读取失败，按空处理", exc_info=True)
+            return []
+        tasks = payload.get("tasks") if isinstance(payload, dict) else None
+        return tasks if isinstance(tasks, list) else []
+
+    def _save(self, tasks: list[dict]) -> None:
+        path = self._path()
+        path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = path.with_suffix(".json.tmp")
+        tmp.write_text(json.dumps({"tasks": tasks}, ensure_ascii=False, indent=1), encoding="utf-8")
+        tmp.replace(path)  # 原子替换，避免崩溃损坏日记自身
+
+    def observe(self, action: str, params: dict[str, Any], response: Any) -> None:
+        """在 import_admin 拿到宿主响应后更新日记状态。"""
+
+        if not isinstance(response, dict):
+            return
+        task_id = str(response.get("task_id") or params.get("task_id") or "").strip()
+        summary = response.get("task") if isinstance(response.get("task"), dict) else response
+        task_id = str(summary.get("task_id") or task_id).strip()
+        status = str(summary.get("status") or "").strip()
+        with self._lock:
+            tasks = self._load()
+            if action == "cancel":
+                # 取消：无论宿主是否还记得该任务，日记条目都应移除
+                kept = [t for t in tasks if t.get("task_id") != task_id]
+                if len(kept) != len(tasks):
+                    self._save(kept)
+                return
+            if not task_id:
+                return
+            existing = next((t for t in tasks if t.get("task_id") == task_id), None)
+            if status in _IMPORT_SUCCESS_STATUSES:
+                # 只有无错完成才清除保留记录
+                if existing:
+                    tasks.remove(existing)
+                    self._save(tasks)
+                return
+            entry = existing or {
+                "task_id": task_id,
+                "action": action,
+                "pid": os.getpid(),
+                "started_at": "",
+                "progress": 0.0,
+                "done_chunks": 0,
+                "total_chunks": 0,
+            }
+            entry["status"] = status if status in _IMPORT_KEEP_STATUSES else "running"
+            entry["progress"] = float(summary.get("progress") or 0.0)
+            entry["done_chunks"] = int(summary.get("done_chunks") or 0)
+            entry["total_chunks"] = int(summary.get("total_chunks") or 0)
+            entry["error"] = str(summary.get("error") or "")
+            entry["pid"] = os.getpid()
+            if existing is None:
+                tasks.append(entry)
+            self._save(tasks)
+
+    def mark_orphans_and_list(self) -> list[dict]:
+        """把其他进程遗留的 running 条目标记为 interrupted，返回可展示的保留条目。"""
+
+        current_pid = os.getpid()
+        with self._lock:
+            tasks = self._load()
+            changed = False
+            for t in tasks:
+                if t.get("status") == "running" and int(t.get("pid") or 0) != current_pid:
+                    t["status"] = "interrupted"
+                    changed = True
+            if changed:
+                self._save(tasks)
+            return [t for t in tasks if t.get("status") in _IMPORT_KEEP_STATUSES]
+
+    def drop(self, task_id: str) -> bool:
+        """手动删除一条保留记录（用于取消/删除中断任务）。"""
+
+        with self._lock:
+            tasks = self._load()
+            kept = [t for t in tasks if t.get("task_id") != task_id]
+            if len(kept) == len(tasks):
+                return False
+            self._save(kept)
+            return True
+
+
+_import_task_journal = ImportTaskJournal()
 
 
 @dataclass
@@ -443,13 +555,6 @@ class MemoryService:
             logger.warning(f"运行时管理调用失败: {exc}")
             return {"success": False, "error": str(exc)}
 
-    async def import_admin(self, *, action: str, timeout_ms: int = 120000, **kwargs) -> Dict[str, Any]:
-        try:
-            return await self._invoke_admin("memory_import_admin", action=action, timeout_ms=timeout_ms, **kwargs)
-        except Exception as exc:
-            logger.warning(f"导入管理调用失败: {exc}")
-            return {"success": False, "error": str(exc)}
-
     async def tuning_admin(self, *, action: str, timeout_ms: int = 120000, **kwargs) -> Dict[str, Any]:
         try:
             return await self._invoke_admin("memory_tuning_admin", action=action, timeout_ms=timeout_ms, **kwargs)
@@ -457,12 +562,30 @@ class MemoryService:
             logger.warning(f"调优管理调用失败: {exc}")
             return {"success": False, "error": str(exc)}
 
-    async def v5_admin(self, *, action: str, timeout_ms: Optional[int] = None, **kwargs) -> Dict[str, Any]:
+    async def import_admin(self, *, action: str, timeout_ms: int = 120000, **kwargs) -> Dict[str, Any]:
         try:
-            return await self._invoke_admin("memory_v5_admin", action=action, timeout_ms=timeout_ms, **kwargs)
+            response = await self._invoke_admin(
+                "memory_import_admin", action=action, timeout_ms=timeout_ms, **kwargs
+            )
         except Exception as exc:
-            logger.warning(f"V5 记忆管理调用失败: {exc}")
+            logger.warning(f"导入管理调用失败: {exc}")
             return {"success": False, "error": str(exc)}
+        try:
+            _import_task_journal.observe(action, kwargs, response)
+        except Exception:
+            # 日记故障不能影响导入主流程，但必须完整暴露
+            logger.exception("导入任务日记更新失败")
+        return response
+
+    def import_journal_snapshot(self) -> list[dict]:
+        """返回中断/失败任务的保留清单（含异 pid 孤儿归档）。"""
+
+        return _import_task_journal.mark_orphans_and_list()
+
+    def import_journal_drop(self, task_id: str) -> bool:
+        """删除一条保留的中断/失败任务记录。"""
+
+        return _import_task_journal.drop(task_id)
 
     async def delete_admin(self, *, action: str, timeout_ms: int = 120000, **kwargs) -> Dict[str, Any]:
         try:

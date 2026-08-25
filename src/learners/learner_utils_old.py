@@ -1,5 +1,4 @@
 import random
-import json
 from typing import Optional, List, Dict, Any
 
 from src.common.logger import get_logger
@@ -81,42 +80,6 @@ def weighted_sample(population: List[Dict], k: int) -> List[Dict]:
     return selected
 
 
-def parse_chat_id_list(chat_id_value: Any) -> List[List[Any]]:
-    """
-    解析chat_id字段，兼容旧格式（字符串）和新格式（JSON列表）
-
-    Args:
-        chat_id_value: 可能是字符串（旧格式）或JSON字符串（新格式）
-
-    Returns:
-        List[List[Any]]: 格式为 [[chat_id, count], ...] 的列表
-    """
-    if not chat_id_value:
-        return []
-
-    # 如果是字符串，尝试解析为JSON
-    if isinstance(chat_id_value, str):
-        # 尝试解析JSON
-        try:
-            parsed = json.loads(chat_id_value)
-            if isinstance(parsed, list):
-                # 新格式：已经是列表
-                return parsed
-            elif isinstance(parsed, str):
-                # 解析后还是字符串，说明是旧格式
-                return [[parsed, 1]]
-            else:
-                # 其他类型，当作旧格式处理
-                return [[str(chat_id_value), 1]]
-        except (json.JSONDecodeError, TypeError):
-            # 解析失败，当作旧格式（纯字符串）
-            return [[str(chat_id_value), 1]]
-    elif isinstance(chat_id_value, list):
-        # 已经是列表格式
-        return chat_id_value
-    else:
-        # 其他类型，转换为旧格式
-        return [[str(chat_id_value), 1]]
 
 
 def update_chat_id_list(chat_id_list: List[List[Any]], target_chat_id: str, increment: int = 1) -> List[List[Any]]:
