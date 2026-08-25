@@ -70,10 +70,14 @@
     "generatedAt": "통계 기준 시각: {{time}}",
     "periodRange": "통계 기간: {{start}}부터 {{end}}까지",
     "empty": "이 기간에는 데이터가 없습니다",
+<<<<<<< HEAD
     "actions": {
       "refresh": "새로고침",
       "openHtml": "HTML 버전 열기"
     },
+=======
+    "actions": { "refresh": "새로고침", "openHtml": "HTML 버전 열기" },
+>>>>>>> 2be57599d (feat: 合并聊天观察和麦麦聊天)
     "error": {
       "title": "상세 통계를 불러오지 못했습니다",
       "description": "잠시 후 다시 시도해 주세요"
@@ -87,6 +91,7 @@
       "last_3_hours": "최근 3시간",
       "last_hour": "최근 1시간",
       "last_15_minutes": "최근 15분"
+<<<<<<< HEAD
     },
     "tabs": {
       "trends": "데이터 차트",
@@ -102,6 +107,17 @@
       "requestTypes": "요청 유형별",
       "chats": "채팅 메시지"
     },
+=======
+    },
+    "tabs": { "trends": "데이터 차트", "metrics": "지표 추이" },
+    "sections": { "breakdowns": "분류 통계", "distributions": "데이터 분포" },
+    "breakdowns": {
+      "models": "모델별",
+      "modules": "모듈별",
+      "requestTypes": "요청 유형별",
+      "chats": "채팅 메시지"
+    },
+>>>>>>> 2be57599d (feat: 合并聊天观察和麦麦聊天)
     "summary": {
       "onlineTime": "총 온라인 시간",
       "messages": "총 메시지 수",
@@ -119,10 +135,13 @@
       "costPerReplies": "비용/답변",
       "costPerHour": "비용/시간",
       "tokensPerHour": "Token/시간"
+<<<<<<< HEAD
     },
     "units": {
       "per100": "100개당",
       "perHour": "시간당"
+=======
+>>>>>>> 2be57599d (feat: 合并聊天观察和麦麦聊天)
     },
     "table": {
       "name": "이름",
@@ -239,7 +258,12 @@
       "conversations": "채팅 대화",
       "emptyPreview": "아직 메시지가 없습니다",
       "identityHint": "로컬 채팅 신분",
+      "myChats": "麦麦와 채팅",
       "newVirtual": "새 가상 신분 대화",
+      "observedAvatarAlt": "{{name}}의 아바타",
+      "observedBadge": "관찰",
+      "observedChats": "麦麦의 채팅 스트림",
+      "observedPreview": "읽기 전용 관찰",
       "online": "온라인",
       "offline": "오프라인",
       "subtitle": "대화 {{count}}개",
@@ -250,7 +274,8 @@
       "editName": "닉네임 편집",
       "saveName": "저장",
       "savingAvatar": "아바타 저장 중",
-      "userAvatarAlt": "{{name}}의 아바타"
+      "userAvatarAlt": "{{name}}의 아바타",
+      "waitingObservedChats": "채팅 스트림 대기 중…"
     },
     "dialog": {
       "create": "대화 만들기",
