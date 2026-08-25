@@ -86,8 +86,11 @@ class PluginLoader:
         self._manifest_validator = ManifestValidator(host_version=host_version)
         self._compat_hook_installed = False
         self._blocked_plugin_reasons: Dict[str, str] = {}
-        self._plugin_type_filter = str(plugin_type_filter or "").strip().lower()
-        self._trusted_plugin_dirs = [Path(path).resolve() for path in trusted_plugin_dirs or []]
+        from src.plugin_runtime.runner.plugin_quarantine import PluginQuarantine
+
+        self._quarantine = PluginQuarantine(
+            Path("data/plugin_runtime/plugin_quarantine.json")
+        )
 
     def set_blocked_plugin_reasons(self, blocked_plugin_reasons: Optional[Dict[str, str]] = None) -> None:
         """更新当前加载器持有的拒绝加载插件列表。
@@ -194,6 +197,13 @@ class PluginLoader:
 
         # 两个 Runner 会扫描同一个第三方插件目录。完整校验前先按原始类型分流，
         # 避免不属于当前 Runner 的插件因 Manifest 错误而被重复记录和输出。
+        # 不兼容插件隔离：指纹匹配时跳过校验，文件变更自动解除
+        if self._quarantine is not None:
+            quarantine_reason = self._quarantine.check(plugin_dir)
+            if quarantine_reason is not None:
+                logger.info(f"插件 {plugin_dir.name} 已隔离（{quarantine_reason}），跳过加载；更新插件后自动解除")
+                return None
+
         if not self._plugin_type_matches_filter_before_validation(plugin_dir):
             return None
 
@@ -203,8 +213,12 @@ class PluginLoader:
             plugin_id = self._read_manifest_id_for_failure(plugin_dir)
             if plugin_id is not None:
                 self._failed_plugins[plugin_id] = f"manifest 校验失败: {errors}"
+                if self._quarantine is not None:
+                    self._quarantine.quarantine(plugin_dir, f"manifest 校验失败: {errors}")
             else:
                 logger.error(f"插件 {plugin_dir.name} manifest 校验失败，但 manifest 未声明 id，无法按插件 ID 上报: {errors}")
+                if self._quarantine is not None:
+                    self._quarantine.quarantine(plugin_dir, errors)
             return None
 
         plugin_id = manifest.id
@@ -324,6 +338,8 @@ class PluginLoader:
                     results.append(meta)
             except Exception as e:
                 self._failed_plugins[plugin_id] = str(e)
+                if self._quarantine is not None:
+                    self._quarantine.quarantine(plugin_dir, str(e))
                 logger.error(f"加载插件失败 [{plugin_id}]: {e}", exc_info=True)
 
         return results
