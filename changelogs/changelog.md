@@ -1,69 +1,15 @@
 # 更新日志
 
-# [1.2.5] - 2026-8-25
+# [1.2.4] - 2026-8-25
 
-## 主要功能
+## Webui
 
-### 绘图
+- 将长期记忆运行状态收纳到更多操作菜单的弹窗中，精简记忆管理页面顶部布局。
+- 精简记忆调优入口，常用操作仅保留说明、开始按钮和参数入口。
+- 将导入公共参数与高级参数收纳到参数弹窗，减少创建导入任务区域的常驻内容。
+- 调整审计时间线布局，将审计范围改为整行展示，并把变动摘要合并到事件列表。
 
-- 新增绘图生成组件：`generate_image` 内置工具，支持 OpenAI 兼容远端 `/v1/images/generations`（兼容 SiliconFlow 响应变体）、ComfyUI 工作流（API JSON + 节点提示词注入）、SD-WebUI `txt2img` 三类后端，产物落盘 `data/images/<子目录>`
 
-### 语音合成
-
-- 新增 TTS 组件：`synthesize_voice` 内置工具，支持 OpenAI 兼容 `/v1/audio/speech`、GPT-SoVITS api_v2、Fish Speech 自托管服务三类后端，合成结果以语音段直接发送到当前聊天
-
-### Agent
-
-- 新增管理员专属外部 Agent 功能：`/agent <名称> <问题>` 调用外部 Agent，支持 OpenAI 兼容 HTTP 端点（网络知名服务）与本机 CLI 子进程（如 `claude -p`/`codex exec`/`opencode run`）两类接入，经 `external_agent` 配置段注册
-
-### 管理员
-
-- 新增运行时动态管理员列表（`admin_users` 表）：首次使用 `/admin` 或 `/agent` 指令时自动种入出厂预设 `1234567` 与初始管理员 `543011300`，支持 `/admin list|add|remove` 维护；`/admin`、`/agent` 仅对管理员开放
-
-## 细节
-
-### Maisaka
-
-- 降低 prompt 前缀缓存断裂：用户消息 wire 内容统一为数组形态，消除图片部件增删导致的 str/list 形状抖动
-- 规划器消息前缀属性重排：稳定属性（time/user/group_card/is_self_message）前置、易变属性（chat_id/quote/msg_id）后置，提升多轮调用公共前缀长度
-- 修复缓存统计无法解析 `{"request":{"messages"/"input"}}` 载荷导致消息级诊断（对齐窗口/滑动检测）全为空的问题
-
-### 配置
-
-- bot_config 模板新增 `image_generation`、`tts`、`external_agent`、`admin` 四个配置段，版本号升至 8.14.43
-
-### MCP
-
-- 本地 stdio MCP 服务器适配 SDK 2.x：`mcp.server.fastmcp` 已移除，5 个 `mcp-server/*.py` 改为双版本兼容导入（优先 `mcp.server.mcpserver.MCPServer`）；容错 stdio 客户端过滤器改用官方 `jsonrpc_message_adapter` 解析行消息，stdin 序列化对齐 `exclude_unset` 语义
-- 适配 mcp SDK 2.x 契约，修复 MCP 注册失败：Streamable HTTP 传输返回值解包兼容、ClientSession 超时参数由 `timedelta` 改为 float 秒、分页列表游标改经 `params` 传递；宿主服务器 `streamable_http_app` 移除不支持的 `host` 参数；连接上下文栈改为属主任务内进出，消除关闭与热重载时的 anyio 任务边界错误
-- 修复 MCP 宿主服务器未接入主程序启动链路的问题：`mcp.server.enable` 现可实际生效；启动失败不再阻断主程序，运行中异常退出完整记录
-
-### 记忆导入
-
-- 新增导入任务持久日记：宿主进程意外中断后，中断/失败任务在 WebUI 导入列表保留可见（含进度与错误信息），支持取消与删除；仅无错完成的任务自动清除记录
-- Dashboard 导入列表支持 `interrupted` 状态展示（"已中断"徽章，按失败级警示着色）
-- WebUI 新增管理控制台页（`/admin-users`）：动态管理员列表查看/添加/移除，外置引擎（本机 CLI 与网络 HTTP Agent）统一清单与探活测试；接口受登录鉴权保护
-
-### 代码精简
-
-- 全仓 ponytail 式精简：删除 38 个零引用函数与 3 个死模块（`chat/utils/common_utils.py`、`maisaka/attention_drift.py`、`common/data_models/action_record_data_model.py`，合计约 1000 行）；修复 `mcp_server/tools_memory.py` 缺失 `col` 导入与 `webui/routers/memory.py` 缺失 logger 两处运行时 NameError；MCP 宿主服务器接入主程序启动链路（此前 `mcp.server.enable` 配置无生效路径）
-
-# [1.2.4] - 2026-8-24
-
-## 安全
-
-- 消息反序列化补齐 msgpack 解包上限，防止导入/迁移链路写入的深嵌套或超大结构拖垮解析（第五轮审计 E1）
-- 模型路由 `/models/list-by-url`、`/models/test-connection` 由 GET 改为 POST 请求体传参，API Key 不再经 URL query 留存于访问日志与浏览器历史（E2）
-- MCP 宿主服务器监听非环回地址且未配置访问令牌时，启动输出强告警（E3）
-- OpenAI 兼容 base_url 缺协议前缀时按目标区分补全：本机/内网补 `http://`，公网补 `https://` 并告警，避免 API Key 明文跨网传输（E4）
-- dashboard 前端依赖安全升级：seroval（critical）修复、nanoid 高危链移除，npm 审计生产可达面清零；剩余 8 项均为 dev 工具链（vitest/electron 等），需跨大版本升级，留待上游发布线处理（N1）
-- 修复表情包导入工具（scripts/mmipkg_tool.py）路径穿越漏洞：manifest 文件名未净化可写任意文件，现导入前整体校验并中止恶意包（第六轮审计 S1）
-- Cohub 网关（scripts/cohub_gateway.py）新增 `--api-key` Bearer 鉴权，绑定非环回地址且未配置令牌时拒绝启动（S2）；认证文件改为 0600 权限原子落盘（S3）；上游错误体不再透传客户端、仅入日志（S4）
-- 聚类报告 JSON 移除 database_url 字段（S5）
-- Cohub 网关鉴权强化：恒定时间令牌比较、Bearer scheme 大小写不敏感（RFC 6750）、开启鉴权时自动文档端点以 404 屏蔽（第七轮审计）
-- Cohub 网关上游错误细节全面收敛：网络异常、上游响应体、SSE 流内错误消息仅入日志，客户端只收通用描述（第七轮审计 S4 残留清理）
-- 表达向量索引运行时 payload 不再写入 database_url 本地路径，与脚本侧对齐；顺带清理死导入（第七轮审计）
-- mmipkg 导入守卫加固：空文件名与显式路径分隔符前置拒绝，写盘前拒绝符号链接目标（第七轮审计）
 # [1.2.3] - 2026-8-23
 
 
