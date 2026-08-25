@@ -100,10 +100,12 @@ def create_app(
     _setup_cors(app, port)
     _register_api_routes(app)
     _setup_robots_txt(app)
-    # OpenAI 兼容网关挂载在应用根路径（/v1），供 SillyTavern / Agnai 等外部前端接入
+    # OpenAI 兼容网关挂载在应用根路径（/v1），供 SillyTavern / Agnai 等外部前端接入。
+    # 这是公开 API 服务端，保留在核心 app 上。
     from src.webui.routers.openai_gateway import router as openai_gateway_router
 
     app.include_router(openai_gateway_router)
+
     # SillyTavern 数据导入（角色卡/世界书）
     from src.webui.routers.st_import import router as st_import_router
 

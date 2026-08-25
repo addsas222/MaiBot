@@ -41,7 +41,6 @@ const DataTransferIcon: MenuIcon = (props) => createElement(HardDrive, props)
 const ReplyEffectsIcon: MenuIcon = (props) => createElement(Activity, props)
 const SkillsIcon: MenuIcon = (props) => createElement(BookOpen, props)
 const PluginWebuiPagesIcon: MenuIcon = (props) => createElement(AppWindow, props)
-const ExternalAppsIcon: MenuIcon = (props) => createElement(Plug, props)
 
 export const menuSections: MenuSection[] = [
   {
@@ -134,7 +133,6 @@ export const menuSections: MenuSection[] = [
         label: 'sidebar.menu.pluginWebuiPages',
         path: '/plugin-pages',
       },
-      { icon: ExternalAppsIcon, label: 'sidebar.menu.externalApps', path: '/external-apps' },
       { icon: McpIcon, label: 'sidebar.menu.mcpSettings', path: '/mcp-settings' },
       { icon: ShieldCheck, label: 'sidebar.menu.adminUsers', path: '/admin-users' },
     ],

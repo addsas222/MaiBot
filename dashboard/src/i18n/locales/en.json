@@ -60,8 +60,7 @@
       "maisakaMonitor": "MaiSaka Chat Monitor",
       "chatManagement": "Chat Management",
       "localChat": "Local Chat",
-      "settings": "WebUI Settings",
-      "externalApps": "External Apps"
+      "settings": "WebUI Settings"
     }
   },
   "statisticsPage": {

@@ -21,7 +21,6 @@ from src.webui.routers.bot_accounts import router as bot_accounts_router
 from src.webui.routers.config import router as config_router
 from src.webui.routers.data_transfer import router as data_transfer_router
 from src.webui.routers.emoji import router as emoji_router
-from src.webui.routers.external_apps import router as external_apps_router
 from src.webui.routers.expression import router as expression_router
 from src.webui.routers.jargon import router as jargon_router
 from src.webui.routers.memory import router as memory_router
@@ -70,7 +69,6 @@ router.include_router(user_emoji_router)
 # 注册插件管理路由
 router.include_router(plugin_router)
 # 注册外部应用管理路由
-router.include_router(external_apps_router)
 # 注册系统控制路由
 router.include_router(system_router)
 router.include_router(data_transfer_router)

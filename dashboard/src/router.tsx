@@ -320,25 +320,7 @@ const skillsRoute = createRoute({
 })
 
 // 外部应用路由 - SillyTavern / Agnai 管理与嵌入
-export const externalAppsIndexRoute = createRoute({
-  getParentRoute: () => protectedRoute,
-  path: '/external-apps',
-  component: lazyRouteComponent(
-    () => import('./routes/external-apps/index'),
-    'ExternalAppsIndexPage'
-  ),
-})
-
-export const externalAppPageRoute = createRoute({
-  getParentRoute: () => protectedRoute,
-  path: '/external-apps/$appId',
-  component: lazyRouteComponent(
-    () => import('./routes/external-apps/app'),
-    'ExternalAppPage'
-  ),
-})
-
-// 插件镜像源配置路由
+export // 插件镜像源配置路由
 const pluginMirrorsRoute = createRoute({
   getParentRoute: () => protectedRoute,
   path: '/plugin-mirrors',
@@ -445,8 +427,6 @@ const routeTree = rootRoute.addChildren([
     pluginWebuiPagesRoute,
     pluginWebuiPageRoute,
     skillsRoute,
-    externalAppsIndexRoute,
-    externalAppPageRoute,
     pluginMirrorsRoute,
     mcpSettingsRoute,
     adminUsersRoute,

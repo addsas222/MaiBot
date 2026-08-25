@@ -4,11 +4,14 @@
 无需在 _manifest.json 中额外声明。
 """
 
+import hashlib
+import importlib.util
+import sys
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException
-from fastapi.responses import FileResponse
+from fastapi import APIRouter, Depends, FastAPI, HTTPException, Request
+from fastapi.responses import FileResponse, Response
 
 from src.common.logger import get_logger
 from src.plugin_runtime.runner.manifest_validator import is_reserved_plugin_directory
@@ -28,6 +31,96 @@ router = APIRouter(prefix="/ui", dependencies=[Depends(require_auth)])
 # 插件 WebUI 页面所在的子目录名与入口文件名
 PLUGIN_WEBUI_DIRNAME = "webui"
 PLUGIN_WEBUI_INDEX = "index.html"
+# 动态版本网页：插件目录存在 webui_backend.py 即视为提供后端驱动的动态页面，
+# 宿主懒加载其 register(app) 并按内容哈希检测变更后热替换子应用。
+PLUGIN_WEBUI_BACKEND = "webui_backend.py"
+_dynamic_apps: Dict[str, tuple[str, FastAPI]] = {}
+
+
+def _backend_version(backend: Path) -> str:
+    return hashlib.sha256(backend.read_bytes()).hexdigest()[:16]
+
+
+def _load_dynamic_app(plugin_id: str, backend: Path, name: str) -> FastAPI:
+    spec = importlib.util.spec_from_file_location(
+        f"maibot_plugin_webui_{plugin_id}_{_backend_version(backend)}", backend
+    )
+    if spec is None or spec.loader is None:
+        raise RuntimeError(f"无法加载动态模块: {backend}")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+
+    sub_app = FastAPI(title=f"{name} (dynamic)")
+    register = getattr(module, "register", None)
+    if not callable(register):
+        raise RuntimeError(f"{backend.name} 缺少 register(app) 入口")
+    register(sub_app)
+    return sub_app
+
+
+def _get_dynamic_subapp(plugin_id: str, plugin_root: Path, name: str) -> FastAPI:
+    backend = plugin_root / PLUGIN_WEBUI_BACKEND
+    if not backend.is_file():
+        raise HTTPException(status_code=404, detail="插件未提供动态网页后端")
+
+    version = _backend_version(backend)
+    cached = _dynamic_apps.get(plugin_id)
+    if cached is not None and cached[0] == version:
+        return cached[1]
+
+    sub_app = _load_dynamic_app(plugin_id, backend, name)
+    _dynamic_apps[plugin_id] = (version, sub_app)
+    logger.info(f"插件 {plugin_id} 动态网页已加载/热更新 (version={version})")
+    return sub_app
+
+
+@router.api_route(
+    "/dynamic/{plugin_id}/{api_path:path}",
+    methods=["GET", "POST", "PUT", "DELETE", "PATCH"],
+    dependencies=[Depends(require_auth)],
+)
+async def serve_plugin_dynamic_api(
+    plugin_id: str, api_path: str, request: Request
+) -> Response:
+    """把请求透传给插件的动态子应用；webui_backend 内容变化时自动热替换。"""
+
+    info = _collect_webui_plugins().get(plugin_id)
+    if info is None:
+        raise HTTPException(status_code=404, detail="插件不存在")
+
+    try:
+        sub_app = _get_dynamic_subapp(plugin_id, info["webui_root"].parent, info["name"])
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"动态网页加载失败: {exc}") from exc
+
+    scope = dict(request.scope)
+    scope["path"] = f"/{api_path}"
+    scope["root_path"] = scope.get("root_path", "") + request.scope["path"][: -len(api_path)]
+
+    messages: list[dict] = []
+
+    async def receive() -> dict:
+        body = await request.body()
+        return {"type": "http.request", "body": body, "more_body": False}
+
+    async def send(message: dict) -> None:
+        messages.append(message)
+
+    await sub_app(scope, receive, send)
+
+    start = next((m for m in messages if m["type"] == "http.response.start"), None)
+    if start is None:
+        raise HTTPException(status_code=502, detail="插件动态网页无响应")
+    body = b"".join(m.get("body", b"") for m in messages if m["type"] == "http.response.body")
+    # ASGI 头为 (bytes, bytes) 元组，需解码后再构造 Response
+    headers = {
+        k.decode("latin-1"): v.decode("latin-1")
+        for k, v in start.get("headers", [])
+    }
+    return Response(content=body, status_code=start["status"], headers=headers)
 
 
 def _iter_plugin_roots() -> List[Path]:

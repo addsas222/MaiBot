@@ -60,8 +60,7 @@
       "maisakaMonitor": "MaiSaka チャット監視",
       "chatManagement": "チャット管理",
       "localChat": "ローカルチャット",
-      "settings": "WebUI 設定",
-      "externalApps": "外部アプリ"
+      "settings": "WebUI 設定"
     }
   },
   "statisticsPage": {
