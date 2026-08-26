@@ -13,6 +13,22 @@ import re
 _EXT_PATTERN = re.compile(r"\.(txt|json|md|db|jpg|png)$", re.IGNORECASE)
 _IMPORTS_MARK = "/imports/"
 
+
+def _compress_filename(name: str) -> str:
+    """压缩文件名/来源名：剥扩展名，纯数字段仅保留合法日期（YYYYMMDD），
+    其余纯数字段（群号/毫秒/时间戳）删除。"""
+    name = _EXT_PATTERN.sub("", name)
+    parts = [p for p in name.split("_") if p]
+    kept = []
+    for part in parts:
+        if part.isdigit():
+            if _is_valid_date(part[:8] if len(part) >= 8 else part):
+                kept.append(part[:8])
+            continue
+        kept.append(part)
+    return re.sub(r"_+", "_", "_".join(kept)).strip("_") or "unknown"
+
+
 def _is_valid_date(value: str) -> bool:
     """判断纯数字段是否为合法 YYYYMMDD 日期。"""
     if len(value) != 8:
@@ -48,23 +64,18 @@ def compress_source_label(source: str) -> str:
         parts = [p for p in kept.split("/") if p]
         if len(parts) > 2:
             parts = parts[-2:]
-        kept = "/".join(parts) or path.split("/")[-1]
+        if parts:
+            # 目录段原样保留（如 20260814/世界观），文件名段应用与 web_import 相同的压缩
+            parts[-1] = _compress_filename(parts[-1])
+        kept = "/".join(parts) or "unknown"
         return f"imports:{kept}"
+    if label.startswith("imports:"):
+        # 已迁移形态：目录段保留，文件名段仍需压缩（历史行可能残留扩展名/数字噪声）
+        kept = label[len("imports:"):]
+        parts = [p for p in kept.split("/") if p]
+        if parts:
+            parts[-1] = _compress_filename(parts[-1])
+        return f"imports:{'/'.join(parts) or 'unknown'}"
     if label.startswith("web_import:"):
-        name = label[len("web_import:"):]
-        name = _EXT_PATTERN.sub("", name)
-        parts = [p for p in name.split("_") if p]
-        kept = []
-        for part in parts:
-            if part.isdigit():
-                # 保留合法日期段（YYYYMMDD）；无分隔连写（日期+时间戳）截取前 8 位日期；
-                # 其余纯数字段（群号/毫秒/时间戳）是噪声，直接删除
-                if _is_valid_date(part[:8] if len(part) >= 8 else part):
-                    kept.append(part[:8])
-                continue
-            kept.append(part)
-        name_output = re.sub(r"_+", "_", "_".join(kept)).strip("_")
-        if not name_output:
-            name_output = "unknown"
-        return f"web_import:{name_output}"
+        return f"web_import:{_compress_filename(label[len('web_import:'):])}"
     return label
