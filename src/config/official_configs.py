@@ -4449,7 +4449,9 @@ class AdminConfig(ConfigBase):
 
     __ui_label__ = "管理员"
 
-    preset_users: list[str] = Field(default_factory=lambda: ["1234567"])
+    # 安全要求：不设通配预设号（防出厂后门），管理员一律 /admin add 显式添加；
+    # PRESET_CURRENT 初始管理员由 ensure_seed_admins 独立种入，不受此键影响。
+    preset_users: list[str] = Field(default_factory=list)
     """出厂预设管理员用户 ID 列表；运行时的动态列表存数据库，首次初始化时合并写入。"""
 
 
