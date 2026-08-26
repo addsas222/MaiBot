@@ -17,6 +17,7 @@ from src.common.logger import get_logger
 from src.config.model_configs import TaskConfig
 from src.services import llm_service as llm_api
 
+from .prompt_compression import compress_source_label
 from .model_routing import (
     ResolvedLLMModel,
     generate_with_resolved_model,
@@ -201,20 +202,17 @@ class EpisodeSegmentationService:
             p_hash = str(item.get("hash", "") or "").strip()
             content = str(item.get("content", "") or "").strip().replace("\r\n", "\n")
             content = content[:800]
-            event_start = item.get("event_time_start")
-            event_end = item.get("event_time_end")
             event_time = item.get("event_time")
             rows.append(
                 (
                     f"[{idx}] hash={p_hash}\n"
                     f"event_time={event_time}\n"
-                    f"event_time_start={event_start}\n"
-                    f"event_time_end={event_end}\n"
                     f"content={content}"
                 )
             )
 
-        source_text = str(source or "").strip() or "unknown"
+        # 压缩来源标签：去除绝对路径/群号/毫秒等噪声（仅保留会话身份与日期）
+        source_text = compress_source_label(source) or "unknown"
         return (
             "You are an episode segmentation engine.\n"
             "Group the given paragraphs into one or more coherent episodes.\n"
