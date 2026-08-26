@@ -249,6 +249,41 @@ def build_readable_messages_with_id(
     return "\n".join(lines), message_id_list
 
 
+
+def build_compressed_readable_messages(
+    messages: List[SessionMessage],
+    session_name: str,
+    replace_bot_name: bool = True,
+    timestamp_mode: str = "relative",
+    truncate: bool = False,
+) -> str:
+    """压缩版聊天记录：仅保留 会话名称 + 时间 + 内容。
+
+    供长期记忆 LLM 抽取等场景使用——逐消息用户名、消息 ID 等噪声会干扰
+    事实抽取且占用提示词 token；抽取只需知道这是哪段会话、何时发生、内容为何。
+
+    Args:
+        messages: 待格式化的消息列表。
+        session_name: 会话显示名称（群名或“xxx的私聊”）。
+        replace_bot_name: 是否把机器人昵称替换为“你”。
+        timestamp_mode: 时间戳显示模式。
+        truncate: 是否截断过长内容。
+    """
+    normalized_messages = _normalize_messages(messages)
+    lines: List[str] = [f"会话名称：{session_name or '未知会话'}"]
+    for message in normalized_messages:
+        content = (message.processed_plain_text or "").strip()
+        if replace_bot_name and global_config.bot.nickname:
+            content = content.replace(global_config.bot.nickname, "你")
+        timestamp = translate_timestamp_to_human_readable(
+            message.timestamp.timestamp(),
+            mode=timestamp_mode,
+        )
+        if truncate and len(content) > 200:
+            content = f"{content[:200]}......（内容太长了）"
+        lines.append(f"[{timestamp}] {content}")
+    return "\n".join(lines)
+
 def get_actions_by_timestamp_with_chat(
     chat_id: str,
     timestamp_start: float,

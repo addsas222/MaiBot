@@ -150,6 +150,24 @@ def _normalize_relation_items(raw_relations: Any) -> List[Dict[str, str]]:
     return relations
 
 
+
+def _resolve_session_display_name(chat_id: str) -> str:
+    """解析会话显示名（群名或“xxx的私聊”），用于压缩版聊天记录的会话名称字段。"""
+    try:
+        from src.chat.message_receive.chat_manager import chat_manager
+
+        name = chat_manager.get_session_name(chat_id)
+        if name and name.strip():
+            return name.strip()
+    except Exception as exc:
+        logger.warning(f"获取会话显示名失败: {chat_id}: {exc}")
+    if chat_id.startswith("g"):
+        return f"群聊{chat_id[1:]}"
+    if chat_id.startswith("u"):
+        return f"用户{chat_id[1:]}的私聊"
+    return chat_id
+
+
 def _message_timestamp(message: Any) -> Optional[float]:
     for attr_name in ("timestamp", "time"):
         value = getattr(message, attr_name, None)
@@ -625,8 +643,12 @@ class SummaryImporter:
             if not messages:
                 return SummaryImportResult(False, "未找到有效的聊天记录进行总结")
 
-            # 转换为可读文本
-            chat_history_text = message_api.build_readable_messages(messages)
+            # 转换为压缩版可读文本：仅保留 会话名称 + 时间 + 内容（去除逐消息用户名/消息ID噪声）
+            session_display_name = _resolve_session_display_name(stream_id)
+            chat_history_text = message_api.build_compressed_readable_messages(
+                messages,
+                session_display_name,
+            )
             review_count = self._summary_review_count(metadata)
             previous_summary_context = self._build_previous_summary_context(
                 stream_id,
