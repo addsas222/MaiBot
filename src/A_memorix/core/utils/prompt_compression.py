@@ -24,7 +24,7 @@ def _is_valid_date(value: str) -> bool:
 def compress_source_label(source: str) -> str:
     """压缩 A_memorix 来源标签为与 LLM 抽取相关的极简形式。
 
-    - ``raw_scan:/abs/path/imports/source/maibot/MaiBot.db`` → ``imports:source/maibot/MaiBot.db``
+    - ``raw_scan:/abs/path/imports/source/maibot/MaiBot.db`` → ``imports:maibot/MaiBot.db``
     - ``web_import:group_启萌社_123456789_20260819_095115562.txt`` → ``web_import:group_启萌社_20260819``
     - 其余前缀（chat_summary / lpmm_openie 等）原样保留。
 
@@ -57,9 +57,10 @@ def compress_source_label(source: str) -> str:
         kept = []
         for part in parts:
             if part.isdigit():
-                # 只保留合法日期段（YYYYMMDD），其余纯数字段（群号/毫秒/时间戳）是噪声
-                if len(part) == 8 and _is_valid_date(part):
-                    kept.append(part)
+                # 保留合法日期段（YYYYMMDD）；无分隔连写（日期+时间戳）截取前 8 位日期；
+                # 其余纯数字段（群号/毫秒/时间戳）是噪声，直接删除
+                if _is_valid_date(part[:8] if len(part) >= 8 else part):
+                    kept.append(part[:8])
                 continue
             kept.append(part)
         name_output = re.sub(r"_+", "_", "_".join(kept)).strip("_")
