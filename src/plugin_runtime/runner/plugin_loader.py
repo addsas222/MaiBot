@@ -86,6 +86,9 @@ class PluginLoader:
         self._manifest_validator = ManifestValidator(host_version=host_version)
         self._compat_hook_installed = False
         self._blocked_plugin_reasons: Dict[str, str] = {}
+        # 类型过滤模式与受信目录：runner_main 传入，用于在 manifest 校验前分流适配器/扩展插件
+        self._plugin_type_filter = str(plugin_type_filter or "").strip()
+        self._trusted_plugin_dirs = [Path(p).resolve() for p in (trusted_plugin_dirs or [])]
         from src.plugin_runtime.runner.plugin_quarantine import PluginQuarantine
 
         self._quarantine = PluginQuarantine(
