@@ -649,4 +649,8 @@ mcp-server/aigc-humanizer-zh
 >>>>>>> 222b552d0 (feat: 合并官方dev最新 + 插件动态版本网页支持 + 移除外部程序管理 + MCP SDK2.x适配与宿主接线)
 =======
 .omo/
+<<<<<<< HEAD
 >>>>>>> ad943230e (fix: 外置引擎页面补全启停开关 + 探活状态追踪)
+=======
+.disabled-plugins/
+>>>>>>> 48230e3aa (revert: 移除 tracemalloc 诊断器——堆快照在本机(2核8GB)导致 worker 进程膨胀至4.5GB与系统抖动，多进程架构下报告亦被轻量 Runner 进程污染，诊断改由 smaps 监控承担)

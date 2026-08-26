@@ -31,10 +31,6 @@ from src.common.shutdown import request_shutdown
 from src.common.update_notice import emit_terminal_update_notice_if_needed
 from src.config.legacy_upgrade_confirmation import require_legacy_upgrade_confirmation
 
-# 内存诊断（env 门控）：MAIBOT_TRACEMALLOC=1 时开启分配追踪，每 30 分钟输出报告到 /tmp/tracemalloc-report.txt
-from src.common.mem_tracer import start_if_enabled as _start_mem_tracer
-
-_start_mem_tracer()
 
 # 设置工作目录为脚本所在目录
 script_dir = os.path.dirname(os.path.abspath(__file__))
