@@ -6,6 +6,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
+import { Switch } from '@/components/ui/switch'
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from '@/components/ui/table'
@@ -14,6 +15,8 @@ import {
   getEnginesConfig,
   listExternalEngines,
   saveEnginesConfig,
+  testExternalEngine,
+  toggleExternalEngines,
 } from '@/lib/admin-api'
 import { Loader2, PlugZap, Plus, Server, Trash2 } from 'lucide-react'
 
@@ -26,13 +29,14 @@ export function ExternalEnginesPage() {
 
   const [cliList, setCliList] = useState<Array<{ name: string; command: string; timeout_seconds: number }>>([])
   const [httpList, setHttpList] = useState<Array<{ name: string; base_url: string; api_key: string; model: string; timeout_seconds: number }>>([])
+  const [testingName, setTestingName] = useState<string | null>(null)
   const [dirty, setDirty] = useState(false)
+  const [initialized, setInitialized] = useState(false)
   const initRef = useCallback((data: any) => {
-    setCliList(data.cli.map((e: any) => ({ ...e, command: (e.command || []).join(' ') })))
-    setHttpList(data.http.map((e: any) => ({ ...e })))
+    setCliList((data.cli || []).map((e: any) => ({ ...e, command: (e.command || []).join(' ') })))
+    setHttpList((data.http || []).map((e: any) => ({ ...e })))
     setDirty(false)
   }, [])
-  const [initialized, setInitialized] = useState(false)
   if (!initialized && configQuery.data) {
     initRef(configQuery.data)
     setInitialized(true)
@@ -42,6 +46,14 @@ export function ExternalEnginesPage() {
     void queryClient.invalidateQueries({ queryKey: ['external-engines'] })
     void queryClient.invalidateQueries({ queryKey: ['engines-config'] })
   }, [queryClient])
+
+  const enabled = configQuery.data?.enable ?? false
+
+  const toggleMutation = useMutation({
+    mutationFn: (checked: boolean) => toggleExternalEngines(checked),
+    onSuccess: () => { toast({ title: '状态已切换' }); invalidate() },
+    onError: (err: Error) => { toast({ title: '切换失败', description: err.message, variant: 'destructive' }) },
+  })
 
   const saveMutation = useMutation({
     mutationFn: () => saveEnginesConfig({
@@ -59,46 +71,56 @@ export function ExternalEnginesPage() {
   })
 
   const testMutation = useMutation({
-    mutationFn: (name: string) => import('@/lib/admin-api').then(m => m.testExternalEngine(name, 'ping')),
+    mutationFn: (name: string) => testExternalEngine(name, '连通性测试：请直接回复 pong'),
     onSuccess: (r) => { toast({ title: `${r.engine} 探活成功`, description: `${r.elapsed_ms}ms` }) },
+    onMutate: (name: string) => { setTestingName(name) },
     onError: (err: Error) => { toast({ title: '探活失败', description: err.message, variant: 'destructive' }) },
   })
 
-  const enabled = configQuery.data?.enable ?? false
+  const cliItems = cliList
+  const httpItems = httpList
 
   return (
     <div className="container mx-auto space-y-4 p-4">
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center gap-2"><Server className="h-5 w-5" /> 外置引擎</CardTitle>
+          <CardTitle className="flex items-center gap-2">
+            <Server className="h-5 w-5" />
+            外置引擎
+            <Switch checked={enabled} onCheckedChange={(c) => toggleMutation.mutate(c)} disabled={toggleMutation.isPending} />
+            <Badge variant={enabled ? 'default' : 'secondary'}>{enabled ? '已启用' : '已禁用'}</Badge>
+          </CardTitle>
           <CardDescription>
             管理本机 CLI 与网络 HTTP AI Agent 引擎；支持自定义接入任意 OpenAI 兼容服务和本机 CLI 工具。
-            {!enabled && ' 当前功能未启用（external_agent.enable = false）。'}
           </CardDescription>
         </CardHeader>
-        <CardContent className="space-y-4">
+        <CardContent className="space-y-6">
           {/* CLI 引擎表 */}
           <div>
             <div className="mb-2 flex items-center justify-between">
               <h3 className="text-sm font-medium">CLI 引擎（本机子进程）</h3>
               <Button size="sm" variant="outline" disabled={!enabled}
-                onClick={() => { setCliList(l => [...l, { name: `new-cli-${Date.now() % 1000}`, command: '/usr/bin/env echo', timeout_seconds: 300 }]); setDirty(true) }}>
+                onClick={() => { setCliList(l => [...l, { name: `new-cli-${Date.now() % 1000}`, command: '/usr/bin/env echo hello', timeout_seconds: 300 }]); setDirty(true) }}>
                 <Plus className="mr-1 h-3 w-3" /> 添加 CLI
               </Button>
             </div>
-            <Table>
-              <TableHeader><TableRow><TableHead>名称</TableHead><TableHead>命令</TableHead><TableHead>超时(s)</TableHead><TableHead className="w-10" /></TableRow></TableHeader>
-              <TableBody>
-                {cliList.map((e, i) => (
-                  <TableRow key={i}>
-                    <TableCell><Input value={e.name} onChange={ev => { setCliList(l => l.map((x,j)=>j===i?{...x,name:ev.target.value}:x)); setDirty(true) }} /></TableCell>
-                    <TableCell><Input value={e.command} onChange={ev => { setCliList(l => l.map((x,j)=>j===i?{...x,command:ev.target.value}:x)); setDirty(true) }} /></TableCell>
-                    <TableCell><Input type="number" value={e.timeout_seconds} onChange={ev => { setCliList(l => l.map((x,j)=>j===i?{...x,timeout_seconds:+ev.target.value}:x)); setDirty(true) }} className="w-20" /></TableCell>
-                    <TableCell><Button size="sm" variant="ghost" onClick={() => { setCliList(l => l.filter((_,j)=>j!==i)); setDirty(true) }}><Trash2 className="h-4 w-4" /></Button></TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+            {cliItems.length > 0 && (
+              <Table>
+                <TableHeader>
+                  <TableRow><TableHead>名称</TableHead><TableHead>命令</TableHead><TableHead>超时(s)</TableHead><TableHead className="w-10" /></TableRow>
+                </TableHeader>
+                <TableBody>
+                  {cliItems.map((e, i) => (
+                    <TableRow key={i}>
+                      <TableCell><Input value={e.name} onChange={ev => { setCliList(l => l.map((x, j) => j === i ? { ...x, name: ev.target.value } : x)); setDirty(true) }} /></TableCell>
+                      <TableCell><Input value={e.command} onChange={ev => { setCliList(l => l.map((x, j) => j === i ? { ...x, command: ev.target.value } : x)); setDirty(true) }} /></TableCell>
+                      <TableCell><Input type="number" value={e.timeout_seconds} onChange={ev => { setCliList(l => l.map((x, j) => j === i ? { ...x, timeout_seconds: +ev.target.value } : x)); setDirty(true) }} className="w-20" /></TableCell>
+                      <TableCell><Button size="sm" variant="ghost" onClick={() => { setCliList(l => l.filter((_, j) => j !== i)); setDirty(true) }}><Trash2 className="h-4 w-4" /></Button></TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
           </div>
 
           {/* HTTP 引擎表 */}
@@ -110,26 +132,29 @@ export function ExternalEnginesPage() {
                 <Plus className="mr-1 h-3 w-3" /> 添加 HTTP
               </Button>
             </div>
-            <Table>
-              <TableHeader><TableRow><TableHead>名称</TableHead><TableHead>Base URL</TableHead><TableHead>模型</TableHead><TableHead>超时(s)</TableHead><TableHead className="w-10" /></TableRow></TableHeader>
-              <TableBody>
-                {httpList.map((e, i) => (
-                  <TableRow key={i}>
-                    <TableCell><Input value={e.name} onChange={ev => { setHttpList(l => l.map((x,j)=>j===i?{...x,name:ev.target.value}:x)); setDirty(true) }} /></TableCell>
-                    <TableCell><Input value={e.base_url} onChange={ev => { setHttpList(l => l.map((x,j)=>j===i?{...x,base_url:ev.target.value}:x)); setDirty(true) }} /></TableCell>
-                    <TableCell><Input value={e.model} onChange={ev => { setHttpList(l => l.map((x,j)=>j===i?{...x,model:ev.target.value}:x)); setDirty(true) }} /></TableCell>
-                    <TableCell><Input type="number" value={e.timeout_seconds} onChange={ev => { setHttpList(l => l.map((x,j)=>j===i?{...x,timeout_seconds:+ev.target.value}:x)); setDirty(true) }} className="w-20" /></TableCell>
-                    <TableCell><Button size="sm" variant="ghost" onClick={() => { setHttpList(l => l.filter((_,j)=>j!==i)); setDirty(true) }}><Trash2 className="h-4 w-4" /></Button></TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+            {httpItems.length > 0 && (
+              <Table>
+                <TableHeader>
+                  <TableRow><TableHead>名称</TableHead><TableHead>Base URL</TableHead><TableHead>模型</TableHead><TableHead>超时(s)</TableHead><TableHead className="w-10" /></TableRow>
+                </TableHeader>
+                <TableBody>
+                  {httpItems.map((e, i) => (
+                    <TableRow key={i}>
+                      <TableCell><Input value={e.name} onChange={ev => { setHttpList(l => l.map((x, j) => j === i ? { ...x, name: ev.target.value } : x)); setDirty(true) }} /></TableCell>
+                      <TableCell><Input value={e.base_url} onChange={ev => { setHttpList(l => l.map((x, j) => j === i ? { ...x, base_url: ev.target.value } : x)); setDirty(true) }} /></TableCell>
+                      <TableCell><Input value={e.model} onChange={ev => { setHttpList(l => l.map((x, j) => j === i ? { ...x, model: ev.target.value } : x)); setDirty(true) }} /></TableCell>
+                      <TableCell><Input type="number" value={e.timeout_seconds} onChange={ev => { setHttpList(l => l.map((x, j) => j === i ? { ...x, timeout_seconds: +ev.target.value } : x)); setDirty(true) }} className="w-20" /></TableCell>
+                      <TableCell><Button size="sm" variant="ghost" onClick={() => { setHttpList(l => l.filter((_, j) => j !== i)); setDirty(true) }}><Trash2 className="h-4 w-4" /></Button></TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
           </div>
 
           {/* 操作栏 */}
           <div className="flex items-center gap-2">
-            <Button disabled={!dirty || !enabled || saveMutation.isPending}
-              onClick={() => saveMutation.mutate()}>
+            <Button disabled={!dirty || !enabled || saveMutation.isPending} onClick={() => saveMutation.mutate()}>
               {saveMutation.isPending ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : null}
               保存配置
             </Button>
@@ -154,6 +179,9 @@ export function ExternalEnginesPage() {
                 <Button key={e.name} size="sm" variant="outline"
                   disabled={!enabled || testMutation.isPending}
                   onClick={() => testMutation.mutate(e.name)}>
+                  {testMutation.isPending && testingName === e.name
+                    ? <Loader2 className="mr-1 h-3 w-3 animate-spin" />
+                    : <PlugZap className="mr-1 h-3 w-3" />}
                   {e.name}
                 </Button>
               ))}

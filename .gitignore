@@ -645,4 +645,8 @@ config/mcporter.json
 ChatAPI
 mcp-server/ai-agent-book
 mcp-server/aigc-humanizer-zh
+<<<<<<< HEAD
 >>>>>>> 222b552d0 (feat: 合并官方dev最新 + 插件动态版本网页支持 + 移除外部程序管理 + MCP SDK2.x适配与宿主接线)
+=======
+.omo/
+>>>>>>> ad943230e (fix: 外置引擎页面补全启停开关 + 探活状态追踪)

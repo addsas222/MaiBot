@@ -74,6 +74,23 @@ async def test_external_engine(name: str, payload: EngineTestRequest) -> dict[st
     }
 
 
+@router.put("/toggle")
+async def toggle_external_agent(body: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
+    """切换外部 Agent 功能的启用/禁用状态。"""
+
+    enable = bool(body.get("enable", False))
+    doc = await asyncio.to_thread(_read_bot_config_toml)
+    ext = doc.get("external_agent")
+    if ext is None:
+        raise HTTPException(status_code=404, detail="bot_config.toml 缺少 [external_agent] 段")
+    ext["enable"] = enable
+    await asyncio.to_thread(_write_bot_config_toml, doc)
+
+    from src.config.config import config_manager
+    await config_manager.reload_config(changed_scopes=["bot"])
+    return {"success": True, "enable": enable}
+
+
 class CliEnginePayload(BaseModel):
     name: str = Field(min_length=1)
     command: list[str] = Field(min_length=1)

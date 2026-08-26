@@ -104,3 +104,7 @@ export function getEnginesConfig(): Promise<EnginesConfig> {
 export function saveEnginesConfig(config: { cli: CliEngineConfig[]; http: HttpEngineConfig[] }): Promise<{ success: boolean }> {
   return backendApi.put<EnginesConfig>(`${ENGINES_BASE}/config`, { body: config }).then(() => ({ success: true }))
 }
+
+export function toggleExternalEngines(enable: boolean): Promise<{ success: boolean; enable: boolean }> {
+  return backendApi.put<{ success: boolean; enable: boolean }>(`${ENGINES_BASE}/toggle`, { body: { enable } })
+}
