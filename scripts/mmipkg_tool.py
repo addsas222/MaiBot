@@ -584,15 +584,7 @@ class MMIPKGUnpacker:
         # 发现恶意文件名时中止整个导入，而不是按单条错误继续部分导入
         for item in items:
             fn = item.get("fn", "")
-<<<<<<< HEAD
-<<<<<<< HEAD
             if not fn or "/" in fn or "\\" in fn or fn in {".", ".."} or "\x00" in fn:
-=======
-            if fn and (os.path.basename(fn) != fn or fn in {".", ".."} or "\x00" in fn):
->>>>>>> c7a23699d (fix: 第六轮审计整改——表情包导入路径穿越拦截/Cohub网关鉴权与令牌原子落盘/上游错误体不外传)
-=======
-            if not fn or "/" in fn or "\\" in fn or fn in {".", ".."} or "\x00" in fn:
->>>>>>> 73988f528 (fix: 第七轮审计整改——Cohub网关恒定时间鉴权与文档端点屏蔽/S4残留全面收敛/运行时索引payload移除database_url/mmipkg导入守卫加固)
                 raise ValueError(f"表情包 manifest 含非法文件名: {fn!r}，已中止导入以防路径穿越")
         try:
             imported_count = 0

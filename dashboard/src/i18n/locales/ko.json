@@ -71,14 +71,10 @@
     "generatedAt": "통계 기준 시각: {{time}}",
     "periodRange": "통계 기간: {{start}}부터 {{end}}까지",
     "empty": "이 기간에는 데이터가 없습니다",
-<<<<<<< HEAD
     "actions": {
       "refresh": "새로고침",
       "openHtml": "HTML 버전 열기"
     },
-=======
-    "actions": { "refresh": "새로고침", "openHtml": "HTML 버전 열기" },
->>>>>>> 2be57599d (feat: 合并聊天观察和麦麦聊天)
     "error": {
       "title": "상세 통계를 불러오지 못했습니다",
       "description": "잠시 후 다시 시도해 주세요"
@@ -92,7 +88,6 @@
       "last_3_hours": "최근 3시간",
       "last_hour": "최근 1시간",
       "last_15_minutes": "최근 15분"
-<<<<<<< HEAD
     },
     "tabs": {
       "trends": "데이터 차트",
@@ -108,17 +103,6 @@
       "requestTypes": "요청 유형별",
       "chats": "채팅 메시지"
     },
-=======
-    },
-    "tabs": { "trends": "데이터 차트", "metrics": "지표 추이" },
-    "sections": { "breakdowns": "분류 통계", "distributions": "데이터 분포" },
-    "breakdowns": {
-      "models": "모델별",
-      "modules": "모듈별",
-      "requestTypes": "요청 유형별",
-      "chats": "채팅 메시지"
-    },
->>>>>>> 2be57599d (feat: 合并聊天观察和麦麦聊天)
     "summary": {
       "onlineTime": "총 온라인 시간",
       "messages": "총 메시지 수",
@@ -136,13 +120,10 @@
       "costPerReplies": "비용/답변",
       "costPerHour": "비용/시간",
       "tokensPerHour": "Token/시간"
-<<<<<<< HEAD
     },
     "units": {
       "per100": "100개당",
       "perHour": "시간당"
-=======
->>>>>>> 2be57599d (feat: 合并聊天观察和麦麦聊天)
     },
     "table": {
       "name": "이름",
