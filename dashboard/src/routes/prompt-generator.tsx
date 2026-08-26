@@ -282,7 +282,7 @@ export function PromptGeneratorPage() {
   const [language, setLanguage] = useState('简体中文')
   const [extraRequirements, setExtraRequirements] = useState('')
   const [temperature, setTemperature] = useState('0.3')
-  const [maxTokens, setMaxTokens] = useState('1800')
+  const [maxTokens, setMaxTokens] = useState('8192')
   const [applyingBlockId, setApplyingBlockId] = useState<string | null>(null)
   const [outputTab, setOutputTab] = useState<OutputTab>('blocks')
   const [generated, setGenerated] = useState<PromptGeneratorResponse | null>(null)

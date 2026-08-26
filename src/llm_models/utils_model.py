@@ -43,10 +43,14 @@ from src.llm_models.model_client.base_client import (
 )
 <<<<<<< HEAD
 from src.llm_models.model_cooldown import model_cooldown_registry, model_isolation_registry
+<<<<<<< HEAD
 from src.llm_models.generation_diagnostics import sanitize_diagnostic_url, sanitize_generation_diagnostic
 =======
 from src.llm_models.generation_diagnostics import sanitize_diagnostic_url
 >>>>>>> 418042d1f (fix: 优化大api response导致的内存占用)
+=======
+from src.llm_models.generation_diagnostics import sanitize_diagnostic_url
+>>>>>>> ae1baa037 (feat: 人设生成器按三套蒸馏方法论适配 + 修复 Responses 成功记录回归)
 from src.llm_models.request_snapshot import (
     attach_request_snapshot,
     format_request_snapshot_log_info,
@@ -908,6 +912,8 @@ class LLMOrchestrator:
             AudioTranscriptionRequest: "audio_transcription",
         }[type(request)]
         attempt_number = trace_context.attempt or len(trace_context.generation_attempts) + 1
+        # GenerationAttempt 是轻量诊断 DTO（字段契约见 base_client 定义）；
+        # 请求/响应的深度诊断分别由 request_snapshot 与 APIResponse 携带，不在此重复
         attempt = GenerationAttempt(
             attempt_id=f"{trace_context.request_id}:{attempt_number}",
             workflow_purpose=trace_context.request_type or trace_context.task_name,

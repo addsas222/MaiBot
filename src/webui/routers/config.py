@@ -260,7 +260,7 @@ class PromptGeneratorRequest(BaseModel):
     language: str = Field(default="简体中文", max_length=32, description="生成语言")
     extra_requirements: str = Field(default="", max_length=4000, description="额外生成要求")
     temperature: float = Field(default=0.3, ge=0, le=2, description="生成温度")
-    max_tokens: int = Field(default=1800, ge=256, le=8192, description="最大输出 token 数")
+    max_tokens: int = Field(default=8192, ge=256, le=8192, description="最大输出 token 数")
 
 
 class PromptGeneratorResponse(BaseModel):
@@ -1074,9 +1074,9 @@ def _build_prompt_generator_instruction(request: PromptGeneratorRequest) -> str:
 
 必须只输出一个 JSON 对象，不要 Markdown，不要代码块，不要额外解释。JSON 结构如下：
 {{
-  "personality": "对应 [personality].personality。使用第二人称描述稳定人格、身份和长期特质，建议 80-220 字，不要写成小说设定。",
+  "personality": "对应 [personality].personality。使用第二人称描述稳定人格：身份一笔带过，重点写思维习惯（看问题的角度、判断的直觉规则、绝不会做的反模式），每条特质落到具体行为。建议 80-220 字，不要写成小说设定。",
   "behavior_style": "对应 [personality].behavior_style。只描述何时参与、如何观察局面、如何选择动作以及何时保持安静，不要规定具体说法。",
-  "reply_style": "对应 [personality].reply_style。描述麦麦说话方式、回复长度、语气、互动习惯和禁用表达。",
+  "reply_style": "对应 [personality].reply_style。描述麦麦说话方式、回复长度、语气和禁用表达；表达习惯要具体到可模仿（口头禅用引号原样列出，写明句长、标点、emoji 习惯）。",
   "multiple_reply_style": ["可选备用表达风格，每项一段，最多 5 项"],
   "group_chat_prompt": "对应 [chat.reply_style].group_chat_prompt。只写群聊场景规则，不要重复人格设定。",
   "private_chat_prompts": "对应 [chat.reply_style].private_chat_prompts。只写私聊场景规则，不要重复人格设定。",
@@ -1094,6 +1094,16 @@ def _build_prompt_generator_instruction(request: PromptGeneratorRequest) -> str:
 5. 默认回复应日常、自然、不过度展开；可以保留原文中的鲜明风格，但要改成可维护的配置文字。
 6. 如果信息不足，请根据原文谨慎补全通用聊天规则，并在 notes 中说明需要人工确认，不要反问用户。
 7. 字段值必须都是字符串、字符串数组或对象数组，不能为 null。
+
+人设提炼方法（蒸馏原则，必须遵循）：
+8. 捕捉“怎么想”而不是“说过什么”：把原文提炼为稳定的心智习惯——他习惯用什么角度看问题、做什么判断时依赖什么直觉规则、什么情况绝对不会做（反模式）。身份背景一笔带过，思维方式才是人格核心。
+9. 每条特质必须是具体可执行的行为规则，不能是形容词。写“在什么情况下会怎么做”的完整表述；“被质疑时会先承认再摆证据”，而不是“谦虚严谨”。
+10. 只保留原文能支撑的断言；原文没提但聊天必需的通用规则可以补全，属于合理推断的内容要在 notes 里逐条标注“推断”，不要和原文事实混在一起。
+
+11. 禁止空泛标签堆砌：乐观开朗、热爱学习、积极向上、善解人意、温柔体贴、幽默风趣、博学多才这类词一律不许出现；每个特质必须改写成具体行为表现。
+12. 程度必须可执行化：模糊量词（“比较简短”“适当”“偶尔”）改成可判定的表述（“通常 1-2 句且不超过 40 字”“每 10 条消息最多主动发言 1 次”）；无法量化时就写触发条件。
+13. 一句一事，主动语态，短句优先；不用排比铺陈，不用营销形容词（强大的、极致的、完美的、独一无二的），不写空洞总结和套话。
+14. 表达 DNA 要具体到可直接模仿：口头禅和高频词用引号原样列出，写明标点、emoji、句子长短习惯；有明确依据时给一个“遇到 XX 会怎么回”的示例。
 
 额外要求：
 {request.extra_requirements.strip() or "无"}
