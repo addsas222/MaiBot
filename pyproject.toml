@@ -73,6 +73,12 @@ default = true
 
 [tool.pytest.ini_options]
 pythonpath = [".", "src"]
+filterwarnings = [
+    "error::DeprecationWarning:src.*",
+    "error::UserWarning:src.*",
+    "error::FutureWarning:src.*",
+    "error::ResourceWarning:src.*",
+]
 
 [tool.ruff]
 
@@ -123,13 +129,4 @@ skip-magic-trailing-comma = false
 
 # 自动检测合适的换行符
 line-ending = "auto"
-
-[tool.pytest.ini_options]
-pythonpath = ["."]
-filterwarnings = [
-    "error::DeprecationWarning:src.*",
-    "error::UserWarning:src.*",
-    "error::FutureWarning:src.*",
-    "error::ResourceWarning:src.*",
-]
 
