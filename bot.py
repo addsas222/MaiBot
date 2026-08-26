@@ -1,18 +1,27 @@
 # raise RuntimeError("System Not Ready")
+import ctypes
+import os
 from pathlib import Path
-from rich.traceback import install
 from typing import TypeVar
+
+# glibc malloc arena 膨胀抑制：多线程 × 每线程独立 arena 可导致数 GB 原生内存驻留。
+# 必须在首次 import 引入线程/原生分配的模块之前设置。
+os.environ.setdefault("MALLOC_ARENA_MAX", "2")
+try:
+    ctypes.CDLL("libc.so.6").malloc_trim(0)
+except Exception:
+    pass
 
 import asyncio
 import hashlib
-import os
 import platform
-# import shutil
 import signal
 import subprocess
 import sys
 import time
 import traceback
+
+from rich.traceback import install
 
 from src.common.i18n import set_locale, t, tn
 from src.common.logger import get_logger, initialize_logging, shutdown_logging
