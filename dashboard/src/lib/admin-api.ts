@@ -72,3 +72,35 @@ export function testExternalEngine(name: string, question: string): Promise<Engi
     body: { question },
   })
 }
+
+export interface CliEngineConfig {
+  name: string
+  command: string[]
+  working_dir: string
+  timeout_seconds: number
+  max_output_chars: number
+}
+
+export interface HttpEngineConfig {
+  name: string
+  base_url: string
+  api_key: string
+  model: string
+  system_prompt: string
+  timeout_seconds: number
+}
+
+export interface EnginesConfig {
+  success: boolean
+  enable: boolean
+  cli: CliEngineConfig[]
+  http: HttpEngineConfig[]
+}
+
+export function getEnginesConfig(): Promise<EnginesConfig> {
+  return backendApi.get<EnginesConfig>(`${ENGINES_BASE}/config`)
+}
+
+export function saveEnginesConfig(config: { cli: CliEngineConfig[]; http: HttpEngineConfig[] }): Promise<{ success: boolean }> {
+  return backendApi.put<EnginesConfig>(`${ENGINES_BASE}/config`, { body: config }).then(() => ({ success: true }))
+}
