@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react'
-import type { CallBackProps, Step } from 'react-joyride'
+import type { EventData, Step } from 'react-joyride'
 
 import { act, cleanup, renderHook, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
@@ -16,7 +16,7 @@ const demoSteps: Step[] = [
 ]
 
 // 构造 Joyride 回调数据，默认值可按需覆盖
-function makeCallback(overrides: Partial<CallBackProps> = {}): CallBackProps {
+function makeCallback(overrides: Partial<EventData> = {}): any {
   return {
     action: 'update',
     controlled: true,
@@ -25,7 +25,7 @@ function makeCallback(overrides: Partial<CallBackProps> = {}): CallBackProps {
     origin: null,
     size: demoSteps.length,
     status: 'running',
-    step: demoSteps[0],
+    step: demoSteps[0] as EventData['step'],
     type: 'step:before',
     ...overrides,
   }

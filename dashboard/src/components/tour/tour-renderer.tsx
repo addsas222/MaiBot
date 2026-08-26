@@ -1,4 +1,4 @@
-import Joyride from 'react-joyride'
+import { Joyride } from 'react-joyride'
 import { useState, useEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { useTour } from './use-tour'
@@ -50,21 +50,8 @@ const joyrideStyles = {
   buttonClose: {
     color: 'hsl(var(--color-muted-foreground))',
   },
-  spotlight: {
-    borderRadius: 'var(--radius)',
-  },
 }
 
-// 中文本地化
-const locale = {
-  back: '上一步',
-  close: '关闭',
-  last: '完成',
-  next: '下一步',
-  nextLabelWithProgress: '下一步 ({step}/{steps})',
-  open: '打开对话框',
-  skip: '跳过',
-}
 
 export function TourRenderer() {
   const { state, getCurrentSteps, handleJoyrideCallback } = useTour()
@@ -181,18 +168,13 @@ export function TourRenderer() {
     <Joyride
       key={`tour-step-${state.stepIndex}`}
       steps={steps}
-      stepIndex={state.stepIndex}
       run={state.isRunning}
       continuous
-      showSkipButton
-      showProgress
-      disableOverlayClose
-      disableScrolling={false}
-      disableScrollParentFix={false}
-      callback={handleJoyrideCallback}
-      styles={joyrideStyles}
-      locale={locale}
-      scrollOffset={80}
+      onEvent={handleJoyrideCallback}
+      options={{
+        ...joyrideStyles,
+        scrollOffset: 80,
+      }}
       scrollToFirstStep
     />
   )

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState, type ReactNode } from 'react'
-import type { Step, CallBackProps, Status } from 'react-joyride'
+import type { Step, EventData, Status } from 'react-joyride'
 import { TourContext } from './tour-context'
 import type { TourId, TourState } from './types'
 
@@ -112,7 +112,7 @@ export function TourProvider({ children }: { children: ReactNode }) {
     })
   }, [])
 
-  const handleJoyrideCallback = useCallback((data: CallBackProps) => {
+  const handleJoyrideCallback = useCallback((data: EventData) => {
     const { action, index, status, type } = data
     const finishedStatuses: Status[] = ['finished', 'skipped']
 

@@ -1,4 +1,4 @@
-import type { Step, CallBackProps } from 'react-joyride'
+import type { Step, EventData } from 'react-joyride'
 
 // Tour ID 类型，用于区分不同的引导流程
 export type TourId = string
@@ -38,7 +38,7 @@ export interface TourContextType {
   getCurrentSteps: () => Step[]
 
   // Joyride 回调处理
-  handleJoyrideCallback: (data: CallBackProps) => void
+  handleJoyrideCallback: (data: EventData) => void
 
   // 检查用户是否已完成某个 Tour
   isTourCompleted: (tourId: TourId) => boolean
