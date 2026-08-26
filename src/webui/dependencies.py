@@ -1,25 +1,30 @@
 from typing import Optional
 
-from fastapi import Cookie, Depends, Request
+from fastapi import Cookie, Depends, HTTPException, Request
 
 from .core import check_auth_rate_limit, get_current_token, is_token_valid
 
 
 async def require_auth(
+    request: Request,
     maibot_session: Optional[str] = Cookie(None),
 ) -> str:
     """
-    FastAPI 依赖：要求有效认证
+    FastAPI 依赖：要求有效认证 + 认证频率限制。
 
-    用于保护需要认证的路由，自动从 Cookie 获取并验证 token
-
-    Returns:
-        验证通过的 token
+    限流内嵌于此依赖，所有引用 require_auth 的路由统一获得防暴力破解保护：
+    每个 IP 每分钟最多 10 次认证失败请求，连续失败 5 次封禁 10 分钟。
 
     Raises:
         HTTPException 401: 认证失败
+        HTTPException 429: 请求过于频繁
     """
-    return get_current_token(maibot_session)
+    if not is_token_valid(maibot_session):
+        # 仅对失败请求计数限流，成功请求不受影响
+        await check_auth_rate_limit(request)
+        raise HTTPException(status_code=401, detail="Token 无效或已过期")
+    assert maibot_session is not None
+    return maibot_session
 
 
 async def require_auth_with_rate_limit(
