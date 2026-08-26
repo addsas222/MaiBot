@@ -2,7 +2,6 @@ import { useCallback, useState } from 'react'
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
-import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -20,12 +19,9 @@ import {
   addAdminUser,
   deleteAdminUser,
   listAdminUsers,
-  listExternalEngines,
-  testExternalEngine,
   type AdminUserEntry,
-  type ExternalEngineItem,
 } from '@/lib/admin-api'
-import { Loader2, PlugZap, Server, ShieldCheck, Trash2, UserPlus } from 'lucide-react'
+import { Loader2, ShieldCheck, Trash2, UserPlus } from 'lucide-react'
 
 const CREATED_BY_LABELS: Record<string, string> = {
   PRESET: '出厂预设',
@@ -33,20 +29,8 @@ const CREATED_BY_LABELS: Record<string, string> = {
   MANUAL: '手动添加',
 }
 
-const ENGINE_KIND_LABELS: Record<string, string> = {
-  http: '网络 HTTP',
-  cli: '本机 CLI',
-}
-
 function createdByLabel(entry: AdminUserEntry): string {
   return CREATED_BY_LABELS[entry.created_by] ?? entry.created_by
-}
-
-function engineSummary(engine: ExternalEngineItem): string {
-  if (engine.kind === 'http') {
-    return [engine.base_url, engine.model].filter(Boolean).join(' · ')
-  }
-  return (engine.command ?? []).join(' ')
 }
 
 export function AdminUsersPage() {
@@ -55,14 +39,8 @@ export function AdminUsersPage() {
   const [userId, setUserId] = useState('')
   const [platform, setPlatform] = useState('qq')
   const [note, setNote] = useState('')
-  const [lastTest, setLastTest] = useState<{
-    engine: string
-    elapsed_ms: number
-    preview: string
-  } | null>(null)
 
   const listQuery = useQuery({ queryKey: ['admin-users'], queryFn: listAdminUsers })
-  const enginesQuery = useQuery({ queryKey: ['external-engines'], queryFn: listExternalEngines })
 
   const invalidate = useCallback(() => {
     void queryClient.invalidateQueries({ queryKey: ['admin-users'] })
@@ -95,21 +73,7 @@ export function AdminUsersPage() {
     },
   })
 
-  const testMutation = useMutation({
-    mutationFn: (engine: ExternalEngineItem) =>
-      testExternalEngine(engine.name, '连通性测试：请直接回复 pong'),
-    onSuccess: (result) => {
-      setLastTest({ engine: result.engine, elapsed_ms: result.elapsed_ms, preview: result.preview })
-    },
-    onError: (error: Error) => {
-      toast({ title: '探活失败', description: error.message, variant: 'destructive' })
-      setLastTest(null)
-    },
-  })
-
   const items = listQuery.data?.items ?? []
-  const engines = enginesQuery.data?.items ?? []
-  const enginesEnabled = enginesQuery.data?.enable ?? false
   const submitting = addMutation.isPending || deleteMutation.isPending
 
   return (
@@ -206,83 +170,6 @@ export function AdminUsersPage() {
         </CardContent>
       </Card>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Server className="h-5 w-5" />
-            外置引擎
-          </CardTitle>
-          <CardDescription>
-            本机可部署（CLI 子进程）与网络（OpenAI 兼容 HTTP）外置 Agent 的统一视图；
-            新增与编辑请在配置页 external_agent 段完成。
-            {!enginesEnabled && ' 当前功能未启用（external_agent.enable）。'}
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          {enginesQuery.isLoading ? (
-            <div className="flex items-center justify-center py-6">
-              <Loader2 className="h-6 w-6 animate-spin" />
-            </div>
-          ) : engines.length === 0 ? (
-            <div className="py-6 text-center text-muted-foreground">
-              尚未配置任何外置引擎
-            </div>
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>名称</TableHead>
-                  <TableHead>类型</TableHead>
-                  <TableHead>接入信息</TableHead>
-                  <TableHead>超时</TableHead>
-                  <TableHead className="w-24 text-right">探活</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {engines.map((engine) => (
-                  <TableRow key={engine.name}>
-                    <TableCell className="font-medium">{engine.name}</TableCell>
-                    <TableCell>
-                      <Badge variant="outline">{ENGINE_KIND_LABELS[engine.kind] ?? engine.kind}</Badge>
-                    </TableCell>
-                    <TableCell className="max-w-md truncate font-mono text-xs text-muted-foreground">
-                      {engineSummary(engine) || '-'}
-                    </TableCell>
-                    <TableCell>{engine.timeout_seconds}s</TableCell>
-                    <TableCell className="text-right">
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        disabled={!enginesEnabled || testMutation.isPending}
-                        onClick={() => testMutation.mutate(engine)}
-                      >
-                        {testMutation.isPending && testMutation.variables?.name === engine.name ? (
-                          <Loader2 className="mr-1 h-4 w-4 animate-spin" />
-                        ) : (
-                          <PlugZap className="mr-1 h-4 w-4" />
-                        )}
-                        测试
-                      </Button>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          )}
-
-          {lastTest && (
-            <Alert>
-              <AlertDescription>
-                <span className="font-medium">{lastTest.engine}</span> 探活成功，耗时{' '}
-                {lastTest.elapsed_ms}ms，输出 {lastTest.preview.length} 字符：
-                <pre className="mt-2 max-h-40 overflow-auto rounded bg-muted p-2 text-xs">
-                  {lastTest.preview}
-                </pre>
-              </AlertDescription>
-            </Alert>
-          )}
-        </CardContent>
-      </Card>
-    </div>
+</div>
   )
 }

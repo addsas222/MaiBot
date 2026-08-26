@@ -341,6 +341,12 @@ const adminUsersRoute = createRoute({
   component: lazyRouteComponent(() => import('./routes/admin-users'), 'AdminUsersPage'),
 })
 
+const externalEnginesRoute = createRoute({
+  getParentRoute: () => protectedRoute,
+  path: '/external-engines',
+  component: lazyRouteComponent(() => import('./routes/external-engines'), 'ExternalEnginesPage'),
+})
+
 // 数据迁移与备份路由
 const dataTransferRoute = createRoute({
   getParentRoute: () => protectedRoute,
@@ -430,6 +436,7 @@ const routeTree = rootRoute.addChildren([
     pluginMirrorsRoute,
     mcpSettingsRoute,
     adminUsersRoute,
+    externalEnginesRoute,
     dataTransferRoute,
     logsRoute,
     reasoningProcessRoute,

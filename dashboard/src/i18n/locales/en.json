@@ -52,6 +52,7 @@
       "pluginWebuiPages": "Plugin Pages",
       "mcpSettings": "MCP Settings",
       "adminUsers": "Admin Users",
+      "externalEngines": "External Engines",
       "dataTransfer": "Data Management",
       "statistics": "Detailed Statistics",
       "replyEffects": "Reply Effects",

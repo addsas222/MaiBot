@@ -11,6 +11,7 @@ import {
   Hash,
   Home,
   MessageSquare,
+  PlugZap,
   Puzzle,
   Settings,
   ShieldCheck,
@@ -134,6 +135,7 @@ export const menuSections: MenuSection[] = [
       },
       { icon: McpIcon, label: 'sidebar.menu.mcpSettings', path: '/mcp-settings' },
       { icon: ShieldCheck, label: 'sidebar.menu.adminUsers', path: '/admin-users' },
+      { icon: PlugZap, label: 'sidebar.menu.externalEngines', path: '/external-engines' },
     ],
   },
   {
