@@ -458,6 +458,9 @@ class ExpressionLearner:
         logger.info(f"[{session_display_name}] {expression_log_title}：\n{learnt_expressions_str}")
 
         written_expressions: List[MaiExpression] = []
+        # 批次级缓存：整个学习批次只拉取一次会话表达全表，upsert 后原地维护，
+        # 供后续学习项合并去重，避免 O(学习项×全表) 的重复拉取与逐行解析。
+        session_expression_cache = self._load_session_expressions(learning_session_id)
         for situation, style in learnt_expressions:
             before_upsert_result = await self._get_runtime_manager().invoke_hook(
                 "expression.learn.before_upsert",
@@ -488,6 +491,7 @@ class ExpressionLearner:
                 situation,
                 style,
                 session_id=learning_session_id,
+                expression_cache=session_expression_cache,
                 checked=False,
                 modified_by=ModifiedBy.AI if expression_self_reflect else None,
             )
@@ -689,12 +693,33 @@ class ExpressionLearner:
         return filtered_expressions
 
     # ====== DB 操作相关 ======
+    def _load_session_expressions(self, session_id: str) -> List[MaiExpression]:
+        """一次性加载指定会话的全部表达方式，作为学习批次的匹配缓存。
+
+        Args:
+            session_id: 表达方式归属的真实会话 ID。
+
+        Returns:
+            List[MaiExpression]: 该会话的表达方式列表；读取失败时返回空列表。
+        """
+        try:
+            with get_db_session(auto_commit=False) as session:
+                statement = select(Expression).filter_by(session_id=session_id)
+                return [
+                    MaiExpression.from_db_instance(db_expression)
+                    for db_expression in session.exec(statement).all()
+                ]
+        except Exception as e:
+            logger.error(f"加载会话表达方式失败: {e}")
+            return []
+
     async def _upsert_expression_to_db(
         self,
         situation: str,
         style: str,
         *,
         session_id: str,
+        expression_cache: List[MaiExpression],
         checked: bool = False,
         modified_by: Optional[ModifiedBy] = None,
     ) -> Optional[MaiExpression]:
@@ -704,10 +729,15 @@ class ExpressionLearner:
             situation: 表达方式对应的使用情景。
             style: 表达方式风格。
             session_id: 表达方式归属的真实会话 ID。
+            expression_cache: 批次级会话表达缓存（初始拉取一次，upsert 后原地维护），
+                避免批次内每个学习项都全量拉表。
             checked: 是否已经完成人工审核。
             modified_by: 最后修改者标记。
         """
-        expr, similarity = self._find_similar_expression(situation, style, session_id=session_id) or (None, 0)
+        expr, similarity = (
+            self._find_similar_expression(situation, style, session_id=session_id, expressions=expression_cache)
+            or (None, 0)
+        )
         if expr:
             # 只有完全一致的表达才会合并，因此不再触发相似表达的 LLM 情景概括。
             use_llm_summary = similarity < 1.0
@@ -728,6 +758,10 @@ class ExpressionLearner:
                 checked=checked,
                 modified_by=modified_by,
             )
+            # 新建的表达加入批次缓存，使同批次后续学习项能与其合并去重；
+            # 更新路径返回的是缓存中已有对象的同一引用，无需重复追加。
+            if expression is not None:
+                expression_cache.append(expression)
 
         return expression
 
@@ -925,13 +959,15 @@ class ExpressionLearner:
         style: str,
         *,
         session_id: str,
+        expressions: List[MaiExpression],
     ) -> Optional[Tuple[MaiExpression, float]]:
-        """在数据库中查找完全一致的表达方式。
+        """在给定的会话表达列表中查找完全一致的表达方式。
 
         Args:
             situation: 当前待匹配的情景描述。
             style: 当前待匹配的表达风格。
             session_id: 表达方式归属的真实会话 ID。
+            expressions: 参与匹配的会话表达列表（批次级缓存，由调用方拉取并维护）。
 
         Returns:
             Optional[Tuple[MaiExpression, float]]: 若找到完全一致的表达方式，则返回
@@ -943,21 +979,16 @@ class ExpressionLearner:
             return None
 
         try:
-            with get_db_session(auto_commit=False) as session:
-                statement = select(Expression).filter_by(session_id=session_id)
-                expressions = session.exec(statement).all()
+            for expression in expressions:
+                expression_style = normalize_expression_style_for_learning(expression.style)
+                if expression_style != normalized_style:
+                    continue
 
-                for db_expression in expressions:
-                    expression = MaiExpression.from_db_instance(db_expression)
-                    expression_style = normalize_expression_style_for_learning(expression.style)
-                    if expression_style != normalized_style:
-                        continue
-
-                    candidate_situations = [expression.situation, *expression.content]
-                    for candidate_situation in candidate_situations:
-                        if candidate_situation.strip() == normalized_situation:
-                            logger.debug(f"找到完全一致表达方式 [ID: {expression.item_id}]")
-                            return expression, 1.0
+                candidate_situations = [expression.situation, *expression.content]
+                for candidate_situation in candidate_situations:
+                    if candidate_situation.strip() == normalized_situation:
+                        logger.debug(f"找到完全一致表达方式 [ID: {expression.item_id}]")
+                        return expression, 1.0
 
         except Exception as e:
             logger.error(f"查找相似表达方式失败: {e}")
