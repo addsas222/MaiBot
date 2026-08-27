@@ -110,6 +110,7 @@ def main() -> int:
     parser.add_argument("--token", default="", help="指定新 token（缺省生成）")
     parser.add_argument("--snowluma-config", default="", help="SnowLuma 端配置文件路径（JSON）")
     parser.add_argument("--verify", action="store_true", help="仅验证当前 token 握手")
+    parser.add_argument("--apply", action="store_true", help="验证通过后落盘 adapter 配置（默认 dry-run）")
     args = parser.parse_args()
 
     if args.verify:
@@ -117,16 +118,21 @@ def main() -> int:
         return 0 if asyncio.run(verify_token(current)) else 1
 
     new_token = args.token or gen_token()
+    print(f"[生成] 新 token: {new_token[:8]}...{new_token[-4:]}")
+    print("[干跑] 默认不落盘。确认 SnowLuma 端已使用同一 token 后，加 --apply 提交。")
+
+    if not args.apply:
+        print("[说明] 提交顺序: SnowLuma WebUI (5099) 先更新 → 3001 接受新 token → 运行 --apply 才写 adapter config")
+        return 0 if args.snowluma_config else 0
+
+    # --apply：先验证 SnowLuma 端已接受该 token（防止把 bot 打成 401 断连态）
+    if not asyncio.run(verify_token(new_token)):
+        print("[中止] SnowLuma 端尚未接受新 token —— 未写 adapter config。请先在 WebUI 更新后再跑 --apply。")
+        return 1
     write_adapter_config(new_token)
     if args.snowluma_config:
         write_snowluma_config(args.snowluma_config, new_token)
-    else:
-        print("[提示] 未提供 --snowluma-config; 请在 SnowLuma WebUI (5099) → 网络/访问令牌 手动粘贴同一 token")
-    ok = asyncio.run(verify_token(new_token))
-    if not ok:
-        print("[提示] 验证失败: SnowLuma 端尚未更新为同一 token（WebUI 更新后重跑 --verify）")
-        return 1
-    print("\n两端 token 已统一 ✓")
+    print("\n两端 token 已统一 ✓（adapter 已落盘，重启 bot 生效）")
     return 0
 
 
