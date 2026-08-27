@@ -2,10 +2,11 @@
 """SnowLuma access_token 轮换与两端同步。
 
 用法:
-    uv run python scripts/rotate_snowluma_token.py                # 生成新 token, 写本地 adapter config
-    uv run python scripts/rotate_snowluma_token.py --token XXXX    # 指定 token
-    uv run python scripts/rotate_snowluma_token.py --snowluma-config /path/to/snowluma.json  # 同步写 SnowLuma 端 config
-    uv run python scripts/rotate_snowluma_token.py --verify        # 仅验证当前 3001 握手（不轮换）
+    uv run python scripts/rotate_snowluma_token.py                # dry-run: 生成 token 并打印接管顺序, 不落盘
+    uv run python scripts/rotate_snowluma_token.py --apply        # 验证 3001 接受新 token 后才写 adapter config
+    uv run python scripts/rotate_snowluma_token.py --token XXXX --apply  # 指定 token 落盘
+    uv run python scripts/rotate_snowluma_token.py --snowluma-config /path/to/snowluma.json --apply  # 同步写 SnowLuma 端 config
+    uv run python scripts/rotate_snowluma_token.py --verify       # 仅验证当前 3001 握手（不轮换）
 
 SnowLuma 端 token 更新: 若无法写其配置文件, 登录 SnowLuma WebUI (5099) → 网络/访问令牌 手动粘贴同一值。
 """
@@ -93,7 +94,6 @@ def write_snowluma_config(path: str, new_token: str) -> None:
             for key, value in obj.items():
                 if key in ("access_token", "token") and isinstance(value, str):
                     obj[key] = new_token
-                    walk = True
                 else:
                     walk(value)
         elif isinstance(obj, list):
