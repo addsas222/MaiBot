@@ -105,6 +105,8 @@ function CoreSettingCard({
   )
 }
 
+import { AdminSettingsSection } from '@/routes/admin-users'
+
 export function CoreSettings({
   botSection,
   onPersonalitySectionChange,
@@ -214,6 +216,11 @@ export function CoreSettings({
             value={behaviorStyle}
           />
         </div>
+      </div>
+
+      {/* 管理员管理：并入麦麦设置（原独立页 /admin-users 已移除） */}
+      <div className="mt-6">
+        <AdminSettingsSection />
       </div>
     </section>
   )

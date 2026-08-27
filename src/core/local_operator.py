@@ -47,12 +47,21 @@ def has_plugin_management_permission(
     *,
     local_operator: bool,
 ) -> bool:
-    """判断用户是否具有插件生命周期管理权限。"""
+    """判断用户是否具有插件生命周期管理权限。
+
+    权限模型统一：管理员配置（admin_users 表，由 WebUI/麦麦设置管理）
+    与 plugin.permission 操作员列表均视为有管理权限；任一命中即放行。
+    """
 
     if local_operator:
         return True
     scoped_user_id = build_scoped_user_id(platform, user_id)
-    return bool(scoped_user_id) and scoped_user_id in normalize_operator_permissions(permission_list)
+    if bool(scoped_user_id) and scoped_user_id in normalize_operator_permissions(permission_list):
+        return True
+    # 动态管理员（admin_users 表）并入管理权限来源
+    from src.services import admin_user_service
+
+    return admin_user_service.is_admin_sync(platform, user_id)
 
 
 def has_command_permission(

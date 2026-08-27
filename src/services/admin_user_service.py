@@ -61,8 +61,8 @@ def _record_to_dict(record: AdminUser) -> dict[str, Any]:
     }
 
 
-async def is_admin(platform: str, user_id: str) -> bool:
-    """判断用户是否为管理员。
+def is_admin_sync(platform: str, user_id: str) -> bool:
+    """判断用户是否为管理员（同步版，供同步调用方使用）。
 
     命中规则：存在 ``user_id`` 匹配且 ``platform`` 等于传入值或为空串（通配全平台）的条目。
     ``user_id`` 为空白直接返回 False。
@@ -81,6 +81,12 @@ async def is_admin(platform: str, user_id: str) -> bool:
             ),
         )
         return session.exec(statement).first() is not None
+
+
+async def is_admin(platform: str, user_id: str) -> bool:
+    """判断用户是否为管理员（异步包装，供 async 调用方使用）。"""
+
+    return is_admin_sync(platform, user_id)
 
 
 async def list_admins() -> list[dict]:

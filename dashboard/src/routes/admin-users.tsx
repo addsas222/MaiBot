@@ -33,7 +33,7 @@ function createdByLabel(entry: AdminUserEntry): string {
   return CREATED_BY_LABELS[entry.created_by] ?? entry.created_by
 }
 
-export function AdminUsersPage() {
+export function AdminSettingsSection() {
   const queryClient = useQueryClient()
   const { toast } = useToast()
   const [userId, setUserId] = useState('')
@@ -77,7 +77,7 @@ export function AdminUsersPage() {
   const submitting = addMutation.isPending || deleteMutation.isPending
 
   return (
-    <div className="container mx-auto space-y-4 p-4">
+    <div className="space-y-4">
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
@@ -169,7 +169,6 @@ export function AdminUsersPage() {
           )}
         </CardContent>
       </Card>
-
-</div>
+    </div>
   )
 }
