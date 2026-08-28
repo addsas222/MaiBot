@@ -41,6 +41,7 @@ from src.llm_models.model_client.base_client import (
     ResponseRequest,
     client_registry,
 )
+from src.llm_models.model_cooldown import model_cooldown_registry, model_isolation_registry
 from src.llm_models.generation_diagnostics import sanitize_diagnostic_url
 from src.llm_models.request_snapshot import (
     attach_request_snapshot,

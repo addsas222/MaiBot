@@ -73,6 +73,12 @@ default = true
 
 [tool.pytest.ini_options]
 pythonpath = [".", "src"]
+filterwarnings = [
+    "error::DeprecationWarning:src.*",
+    "error::UserWarning:src.*",
+    "error::FutureWarning:src.*",
+    "error::ResourceWarning:src.*",
+]
 
 [tool.ruff]
 

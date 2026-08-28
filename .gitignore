@@ -56,6 +56,7 @@ start_all.bat
 config/bot_config_dev.toml
 config/bot_config.toml
 config/bot_config.toml.bak
+config/mcporter.json
 template/compare/bot_config_template.toml
 template/compare/model_config_template.toml
 # CLAUDE.md
