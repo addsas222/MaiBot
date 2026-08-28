@@ -3276,8 +3276,7 @@ async def get_memory_record_context(
     record_id: str,
     limit: int = Query(50, ge=1, le=200),
 ):
-    # 同步 DB 查询放到线程中执行，避免阻塞事件循环
-    return await asyncio.to_thread(_memory_record_context, record_type, record_id, limit)
+    return _memory_record_context(record_type, record_id, limit)
 
 
 @router.get("/graph")
