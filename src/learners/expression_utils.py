@@ -1,4 +1,4 @@
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Set, Tuple
 
 from json_repair import repair_json
 
@@ -274,6 +274,39 @@ def parse_jargon_response(response: str) -> List[Tuple[str, str]]:
 
     _, jargon_entries = parse_expression_response(response)
     return jargon_entries
+
+
+def parse_llm_json_list(response: str, *, label: str) -> Optional[List[Any]]:
+    """剥离代码块后解析 LLM 返回的 JSON 列表，解析失败或类型不符时返回 None。"""
+
+    raw = _strip_markdown_code_fence(response or "")
+    if not raw:
+        return None
+
+    parsed = _try_parse(raw)
+    if parsed is None:
+        logger.error(f"{label}响应解析失败: response={raw[:200]}")
+        return None
+    if not isinstance(parsed, list):
+        logger.warning(f"{label}响应格式异常，按无结果处理")
+        return None
+    return parsed
+
+
+def parse_judge_response(response: str, *, judged_key: str, label: str) -> Set[str]:
+    """解析判定类 LLM 响应，返回 ``judged_key`` 为真的条目 content 集合。"""
+
+    parsed = parse_llm_json_list(response, label=label)
+    if parsed is None:
+        return set()
+
+    judged_contents: Set[str] = set()
+    for item in parsed:
+        if not isinstance(item, dict) or not item.get(judged_key, False):
+            continue
+        if content := str(item.get("content", "")).strip():
+            judged_contents.add(content)
+    return judged_contents
 
 
 def is_single_char_jargon(content: str) -> bool:

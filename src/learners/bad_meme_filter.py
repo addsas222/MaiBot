@@ -27,6 +27,8 @@ from src.common.logger import get_logger
 from src.prompt.prompt_manager import prompt_manager
 from src.services.llm_service import LLMServiceClient
 
+from .expression_utils import parse_judge_response, parse_llm_json_list
+
 logger = get_logger("bad_meme_filter")
 
 meme_judge_model = LLMServiceClient(task_name="learner", request_type="meme.judge")
@@ -417,38 +419,7 @@ def _render_judge_entries(entries: Sequence[Tuple[str, str]]) -> str:
 def _parse_judge_response(response: str) -> Set[str]:
     """解析烂梗判定 LLM 响应，返回判定为烂梗的 content 集合。"""
 
-    import json
-
-    from json_repair import repair_json
-
-    raw = (response or "").strip()
-    if not raw:
-        return set()
-    if match := re.search(r"```json\s*(.*?)\s*```", raw, re.DOTALL):
-        raw = match.group(1).strip()
-    try:
-        parsed = json.loads(raw)
-    except Exception:
-        try:
-            parsed = json.loads(repair_json(raw))
-        except Exception as exc:
-            logger.error(f"烂梗判定响应解析失败: {exc}, response={raw[:200]}")
-            return set()
-
-    if not isinstance(parsed, list):
-        logger.warning("烂梗判定响应格式异常，按无烂梗处理")
-        return set()
-
-    judged_bad: Set[str] = set()
-    for item in parsed:
-        if not isinstance(item, dict):
-            continue
-        if not item.get("is_bad_meme", False):
-            continue
-        content = str(item.get("content", "")).strip()
-        if content:
-            judged_bad.add(content)
-    return judged_bad
+    return parse_judge_response(response, judged_key="is_bad_meme", label="烂梗判定")
 
 
 async def judge_bad_meme_with_llm(
@@ -640,26 +611,8 @@ def _collect_emoji_description_texts(limit: int = 200) -> List[str]:
 def _parse_extract_response(response: str) -> List[str]:
     """解析网络烂梗提取 LLM 响应，返回词条列表。"""
 
-    import json
-
-    from json_repair import repair_json
-
-    raw = (response or "").strip()
-    if not raw:
-        return []
-    if match := re.search(r"```json\s*(.*?)\s*```", raw, re.DOTALL):
-        raw = match.group(1).strip()
-    try:
-        parsed = json.loads(raw)
-    except Exception:
-        try:
-            parsed = json.loads(repair_json(raw))
-        except Exception as exc:
-            logger.error(f"网络烂梗提取响应解析失败: {exc}, response={raw[:200]}")
-            return []
-
-    if not isinstance(parsed, list):
-        logger.warning("网络烂梗提取响应格式异常，按空结果处理")
+    parsed = parse_llm_json_list(response, label="网络烂梗提取")
+    if parsed is None:
         return []
 
     terms: List[str] = []
