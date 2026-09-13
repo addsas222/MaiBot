@@ -1,5 +1,5 @@
 # Runtime image
-FROM python:3.13-slim
+FROM python:3.14-slim
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 
 # Working directory
@@ -16,7 +16,7 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 # Install runtime dependencies
-RUN uv sync --no-dev --no-install-project
+RUN uv sync --locked --no-dev --no-install-project
 
 # Install system libraries required by Playwright Chromium. The browser binary
 # itself is downloaded lazily into the configured data directory at runtime.

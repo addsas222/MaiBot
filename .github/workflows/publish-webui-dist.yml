@@ -3,7 +3,6 @@ name: Publish WebUI Dist
 on:
   push:
     branches:
-      - main
       - dev
       - r-dev
     paths:
@@ -23,7 +22,7 @@ jobs:
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
         with:
-          bun-version: "1.2.1"
+          bun-version: "1.4.2"
 
       - name: Build dashboard
         working-directory: dashboard
@@ -36,19 +35,15 @@ jobs:
           rm -rf .webui_dist_pkg
           mkdir -p .webui_dist_pkg/maibot_dashboard/dist
           BASE_VERSION=$(python -c "import json; print(json.load(open('dashboard/package.json'))['version'])")
-          if [ "${GITHUB_REF_NAME}" = "main" ]; then
-            WEBUI_VERSION="${BASE_VERSION}"
-          else
-            TODAY=$(date -u +%Y%m%d)
-            WEBUI_VERSION="${BASE_VERSION}.dev${TODAY}${GITHUB_RUN_NUMBER}"
-          fi
+          TODAY=$(date -u +%Y%m%d)
+          WEBUI_VERSION="${BASE_VERSION}.dev${TODAY}${GITHUB_RUN_NUMBER}"
           cat > .webui_dist_pkg/pyproject.toml <<EOF
           [project]
           name = "maibot-dashboard"
           version = "${WEBUI_VERSION}"
           description = "MaiBot WebUI static assets"
           readme = "README.md"
-          requires-python = ">=3.10"
+          requires-python = ">=3.14"
 
           [build-system]
           requires = ["setuptools>=80.9.0", "wheel"]
@@ -86,7 +81,7 @@ jobs:
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
+          python-version: "3.14"
 
       - name: Build and publish
         working-directory: .webui_dist_pkg

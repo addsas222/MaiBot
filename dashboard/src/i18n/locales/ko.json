@@ -112,6 +112,10 @@
       "costPerHour": "비용/시간",
       "tokensPerHour": "Token/시간"
     },
+    "units": {
+      "per100": "100개당",
+      "perHour": "시간당"
+    },
     "table": {
       "name": "이름",
       "requests": "호출 횟수",
