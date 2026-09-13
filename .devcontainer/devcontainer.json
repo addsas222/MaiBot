@@ -22,8 +22,8 @@
 		"MAIBOT_LOCALE": "zh-CN",
 		"MAIBOT_LEGACY_0X_UPGRADE_CONFIRMED": "1",
 		"TZ": "Asia/Shanghai",
-		"EULA_AGREE": "1b662741904d7155d1ce1c00b3530d0d",
-		"PRIVACY_AGREE": "9943b855e72199d0f5016ea39052f1b6"
+		"EULA_AGREE": "8e6e7d647f7f82d6ea98456b73908656",
+		"PRIVACY_AGREE": "91e5db7659c560bc3545e63859b6ebc0"
 	},
 	// 将 .venv/bin 加入 PATH，对齐生产镜像的 ENV PATH="/MaiMBot/.venv/bin:${PATH}"
 	// 清空从宿主机继承的 HTTP_PROXY，网络路由由 Docker 决定，与宿主机无关

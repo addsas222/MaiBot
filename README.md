@@ -11,7 +11,7 @@
 
   <!-- Badges Row -->
   <p>
-    <img src="https://img.shields.io/badge/Python-3.12+-blue" alt="Python Version">
+    <img src="https://img.shields.io/badge/Python-3.14+-blue" alt="Python Version">
     <img src="https://img.shields.io/github/license/Mai-with-u/MaiBot?label=License" alt="License">
     <img src="https://img.shields.io/github/contributors/Mai-with-u/MaiBot.svg?style=flat&label=Contributors" alt="Contributors">
     <img src="https://img.shields.io/github/forks/Mai-with-u/MaiBot.svg?style=flat&label=Forks" alt="Forks">

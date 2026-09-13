@@ -727,8 +727,8 @@ run_installation() {
     # Python版本检查
     check_python() {
         PYTHON_VERSION=$(python3 -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')
-        if ! python3 -c "import sys; exit(0) if sys.version_info >= (3,10) else exit(1)"; then
-            whiptail --title "⚠️ [4/6] Python 版本过低" --msgbox "检测到 Python 版本为 $PYTHON_VERSION，需要 3.10 或以上！\n请升级 Python 后重新运行本脚本。" 10 60
+        if ! python3 -c "import sys; exit(0) if sys.version_info >= (3,14) else exit(1)"; then
+            whiptail --title "⚠️ [4/6] Python 版本过低" --msgbox "检测到 Python 版本为 $PYTHON_VERSION，需要 3.14 或以上！\n请升级 Python 后重新运行本脚本。" 10 60
             exit 1
         fi
     }

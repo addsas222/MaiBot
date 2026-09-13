@@ -127,7 +127,7 @@ export function AboutTab() {
           <div className="space-y-1.5">
             <p className="font-medium text-foreground">{t('settings.about.backend')}</p>
             <ul className="space-y-0.5 list-disc list-inside">
-              <li>Python 3.12+</li>
+              <li>Python 3.14+</li>
               <li>FastAPI</li>
               <li>Uvicorn</li>
               <li>WebSocket</li>
