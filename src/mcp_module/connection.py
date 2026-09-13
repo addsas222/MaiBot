@@ -6,7 +6,7 @@ MaiSaka - 单个 MCP 服务器连接管理
 from __future__ import annotations
 
 from contextlib import AsyncExitStack
-from typing import TYPE_CHECKING, Any, Callable, Optional, cast
+from typing import TYPE_CHECKING, Any, Awaitable, Callable, Optional, cast
 
 import asyncio
 import httpx
@@ -536,26 +536,23 @@ class MCPConnection:
             self.server_capabilities is not None and getattr(self.server_capabilities, "resources", None) is not None
         )
 
-    async def _list_paginated(self, method_name: str, result_attr: str) -> list[Any]:
+    async def _list_paginated(self, list_method: Callable[..., Awaitable[Any]], result_attr: str) -> list[Any]:
         """按游标分页拉取服务端暴露的全部条目。
 
         Args:
-            method_name: MCP SDK 会话上的列表方法名。
+            list_method: 已绑定的 MCP SDK 会话列表方法。
             result_attr: 结果对象上承载条目的属性名。
 
         Returns:
             list[Any]: MCP SDK 的原始对象列表。
         """
 
-        if self.session is None:
-            return []
-
         items: list[Any] = []
         cursor: Optional[str] = None
         while True:
             # mcp 2.x：分页游标经 params 传入，续页游标在 next_cursor。
             params = mcp_types.PaginatedRequestParams(cursor=cursor) if cursor else None
-            result = await getattr(self.session, method_name)(params=params)
+            result = await list_method(params=params)
             items.extend(list(getattr(result, result_attr, []) or []))
             cursor = getattr(result, "next_cursor", None)
             if not cursor:
@@ -565,22 +562,30 @@ class MCPConnection:
     async def _list_tools(self) -> list[Any]:
         """分页加载服务端暴露的全部工具。"""
 
-        return await self._list_paginated("list_tools", "tools")
+        if self.session is None:
+            return []
+        return await self._list_paginated(self.session.list_tools, "tools")
 
     async def _list_prompts(self) -> list[Any]:
         """分页加载服务端暴露的全部 Prompt。"""
 
-        return await self._list_paginated("list_prompts", "prompts")
+        if self.session is None:
+            return []
+        return await self._list_paginated(self.session.list_prompts, "prompts")
 
     async def _list_resources(self) -> list[Any]:
         """分页加载服务端暴露的全部 Resource。"""
 
-        return await self._list_paginated("list_resources", "resources")
+        if self.session is None:
+            return []
+        return await self._list_paginated(self.session.list_resources, "resources")
 
     async def _list_resource_templates(self) -> list[Any]:
         """分页加载服务端暴露的全部 Resource Template。"""
 
-        return await self._list_paginated("list_resource_templates", "resourceTemplates")
+        if self.session is None:
+            return []
+        return await self._list_paginated(self.session.list_resource_templates, "resourceTemplates")
 
     async def call_tool(self, tool_name: str, arguments: dict[str, Any]) -> ToolExecutionResult:
         """调用 MCP 工具并返回统一执行结果。
