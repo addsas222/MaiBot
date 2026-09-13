@@ -63,6 +63,9 @@ constraint-dependencies = [
     "pyasn1>=0.6.4",
     "pydantic-settings>=2.14.2",
     "pyjwt>=2.13.0",
+    # ruff 0.16 改了 `ruff format --check` 的输出格式，会让 .github/scripts/check_ruff_format_regressions.py
+    # 解析失败（CI 的 ruff-action 也钉在 0.15.11），故与 CI 对齐钉住小版本。
+    "ruff==0.15.11",
     "starlette>=1.3.1,<1.4",
     "urllib3>=2.7.0",
 ]
@@ -92,6 +95,12 @@ filterwarnings = [
 [tool.ruff]
 
 include = ["*.py"]
+
+# 显式钉住 lint/format 目标版本：ruff 会从 requires-python 推断 target-version，
+# 运行时基线升到 3.14 后会被推断为 py314，从而按 3.14 风格重排大量既有文件
+# （含 src/A_memorix 同步子树，按 MODIFICATION_POLICY.md 不应在本仓改动格式）。
+# 代码本身仍按 3.12+ 语法书写，故目标版本与实际支持范围保持一致。
+target-version = "py312"
 
 # 行长度设置
 line-length = 120
