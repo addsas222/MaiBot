@@ -182,6 +182,25 @@ def get_danger_words() -> List[str]:
     return list(_danger_words)
 
 
+def _match_normalized_words(text: str, words: Sequence[str]) -> List[str]:
+    """返回文本中命中的词条（按词库顺序、去重，按归一化子串匹配）。"""
+
+    normalized_text = normalize_meme_text(text)
+    if not normalized_text:
+        return []
+
+    matched_words: List[str] = []
+    seen_words: set[str] = set()
+    for word in words:
+        normalized_word = normalize_meme_text(word)
+        if not normalized_word or normalized_word in seen_words:
+            continue
+        if normalized_word in normalized_text:
+            seen_words.add(normalized_word)
+            matched_words.append(word)
+    return matched_words
+
+
 def find_danger_words(text: str) -> List[str]:
     """返回文本中命中的危险词条列表（去重）。
 
@@ -192,20 +211,7 @@ def find_danger_words(text: str) -> List[str]:
         List[str]: 命中的危险词条；未命中时返回空列表。
     """
 
-    normalized_text = normalize_meme_text(text)
-    if not normalized_text:
-        return []
-
-    matched_words: List[str] = []
-    seen_words: set[str] = set()
-    for word in get_danger_words():
-        normalized_word = normalize_meme_text(word)
-        if not normalized_word or normalized_word in seen_words:
-            continue
-        if normalized_word in normalized_text:
-            seen_words.add(normalized_word)
-            matched_words.append(word)
-    return matched_words
+    return _match_normalized_words(text, get_danger_words())
 
 # 低俗辱骂/性低俗/恶意诅咒/歧视攻击类烂梗规则：(类别, 正则)
 BAD_MEME_VULGAR_PATTERNS: List[Tuple[str, re.Pattern[str]]] = [

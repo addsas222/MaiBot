@@ -536,90 +536,51 @@ class MCPConnection:
             self.server_capabilities is not None and getattr(self.server_capabilities, "resources", None) is not None
         )
 
-    async def _list_tools(self) -> list[Any]:
-        """分页加载服务端暴露的全部工具。
+    async def _list_paginated(self, method_name: str, result_attr: str) -> list[Any]:
+        """按游标分页拉取服务端暴露的全部条目。
+
+        Args:
+            method_name: MCP SDK 会话上的列表方法名。
+            result_attr: 结果对象上承载条目的属性名。
 
         Returns:
-            list[Any]: MCP SDK 的原始工具对象列表。
+            list[Any]: MCP SDK 的原始对象列表。
         """
 
         if self.session is None:
             return []
 
-        tools: list[Any] = []
+        items: list[Any] = []
         cursor: Optional[str] = None
         while True:
             # mcp 2.x：分页游标经 params 传入，续页游标在 next_cursor。
             params = mcp_types.PaginatedRequestParams(cursor=cursor) if cursor else None
-            result = await self.session.list_tools(params=params)
-            tools.extend(list(getattr(result, "tools", []) or []))
+            result = await getattr(self.session, method_name)(params=params)
+            items.extend(list(getattr(result, result_attr, []) or []))
             cursor = getattr(result, "next_cursor", None)
             if not cursor:
                 break
-        return tools
+        return items
+
+    async def _list_tools(self) -> list[Any]:
+        """分页加载服务端暴露的全部工具。"""
+
+        return await self._list_paginated("list_tools", "tools")
 
     async def _list_prompts(self) -> list[Any]:
-        """分页加载服务端暴露的全部 Prompt。
+        """分页加载服务端暴露的全部 Prompt。"""
 
-        Returns:
-            list[Any]: MCP SDK 的原始 Prompt 对象列表。
-        """
-
-        if self.session is None:
-            return []
-
-        prompts: list[Any] = []
-        cursor: Optional[str] = None
-        while True:
-            params = mcp_types.PaginatedRequestParams(cursor=cursor) if cursor else None
-            result = await self.session.list_prompts(params=params)
-            prompts.extend(list(getattr(result, "prompts", []) or []))
-            cursor = getattr(result, "next_cursor", None)
-            if not cursor:
-                break
-        return prompts
+        return await self._list_paginated("list_prompts", "prompts")
 
     async def _list_resources(self) -> list[Any]:
-        """分页加载服务端暴露的全部 Resource。
+        """分页加载服务端暴露的全部 Resource。"""
 
-        Returns:
-            list[Any]: MCP SDK 的原始 Resource 对象列表。
-        """
-
-        if self.session is None:
-            return []
-
-        resources: list[Any] = []
-        cursor: Optional[str] = None
-        while True:
-            params = mcp_types.PaginatedRequestParams(cursor=cursor) if cursor else None
-            result = await self.session.list_resources(params=params)
-            resources.extend(list(getattr(result, "resources", []) or []))
-            cursor = getattr(result, "next_cursor", None)
-            if not cursor:
-                break
-        return resources
+        return await self._list_paginated("list_resources", "resources")
 
     async def _list_resource_templates(self) -> list[Any]:
-        """分页加载服务端暴露的全部 Resource Template。
+        """分页加载服务端暴露的全部 Resource Template。"""
 
-        Returns:
-            list[Any]: MCP SDK 的原始 Resource Template 对象列表。
-        """
-
-        if self.session is None:
-            return []
-
-        resource_templates: list[Any] = []
-        cursor: Optional[str] = None
-        while True:
-            params = mcp_types.PaginatedRequestParams(cursor=cursor) if cursor else None
-            result = await self.session.list_resource_templates(params=params)
-            resource_templates.extend(list(getattr(result, "resourceTemplates", []) or []))
-            cursor = getattr(result, "next_cursor", None)
-            if not cursor:
-                break
-        return resource_templates
+        return await self._list_paginated("list_resource_templates", "resourceTemplates")
 
     async def call_tool(self, tool_name: str, arguments: dict[str, Any]) -> ToolExecutionResult:
         """调用 MCP 工具并返回统一执行结果。

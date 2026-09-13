@@ -319,8 +319,8 @@ def _get_cached_schema(cache_key: str, config_class: type[ConfigBase], include_n
     return copy.deepcopy(schema)
 
 
-def _safe_prompt_path(language: str, filename: str) -> Path:
-    """校验并解析 prompts 下的文件路径。"""
+def _safe_prompt_path_in(root: Path, language: str, filename: str) -> Path:
+    """校验并解析指定 Prompt 根目录下的文件路径。"""
 
     normalized_language = language.strip()
     normalized_filename = filename.strip()
@@ -330,8 +330,8 @@ def _safe_prompt_path(language: str, filename: str) -> Path:
     if not normalized_filename.endswith(".prompt") or any(part in normalized_filename for part in ("..", "/", "\\")):
         raise HTTPException(status_code=400, detail="无效的 Prompt 文件名")
 
-    prompt_path = (PROMPTS_DIR / normalized_language / normalized_filename).resolve()
-    prompts_root = PROMPTS_DIR.resolve()
+    prompt_path = (root / normalized_language / normalized_filename).resolve()
+    prompts_root = root.resolve()
     try:
         prompt_path.relative_to(prompts_root)
     except ValueError as exc:
@@ -339,24 +339,16 @@ def _safe_prompt_path(language: str, filename: str) -> Path:
     return prompt_path
 
 
+def _safe_prompt_path(language: str, filename: str) -> Path:
+    """校验并解析 prompts 下的文件路径。"""
+
+    return _safe_prompt_path_in(PROMPTS_DIR, language, filename)
+
+
 def _safe_custom_prompt_path(language: str, filename: str) -> Path:
     """校验并解析 data/custom_prompts 下的用户覆盖文件路径。"""
 
-    normalized_language = language.strip()
-    normalized_filename = filename.strip()
-
-    if not normalized_language or any(part in normalized_language for part in ("..", "/", "\\")):
-        raise HTTPException(status_code=400, detail="无效的 Prompt 语言目录")
-    if not normalized_filename.endswith(".prompt") or any(part in normalized_filename for part in ("..", "/", "\\")):
-        raise HTTPException(status_code=400, detail="无效的 Prompt 文件名")
-
-    prompt_path = (CUSTOM_PROMPTS_DIR / normalized_language / normalized_filename).resolve()
-    custom_prompts_root = CUSTOM_PROMPTS_DIR.resolve()
-    try:
-        prompt_path.relative_to(custom_prompts_root)
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail="Prompt 路径越界") from exc
-    return prompt_path
+    return _safe_prompt_path_in(CUSTOM_PROMPTS_DIR, language, filename)
 
 
 def _safe_prompt_version_id(version_id: str) -> str:

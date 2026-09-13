@@ -221,6 +221,33 @@ TOTAL_MSG_CNT = "total_messages"
 MSG_CNT_BY_CHAT = "messages_by_chat"
 TOTAL_REPLY_CNT = "total_replies"
 
+# 按维度（模型/模块）分类统计的键集合：
+# (请求数, 输入Token, 输出Token, Token总量, 花费, 平均耗时, 耗时标准差, 缓存命中Token, 缓存未命中Token)
+_CLASSIFIED_STAT_KEYS: dict[str, tuple[str, ...]] = {
+    "模型": (
+        REQ_CNT_BY_MODEL,
+        IN_TOK_BY_MODEL,
+        OUT_TOK_BY_MODEL,
+        TOTAL_TOK_BY_MODEL,
+        COST_BY_MODEL,
+        AVG_TIME_COST_BY_MODEL,
+        STD_TIME_COST_BY_MODEL,
+        CACHE_HIT_TOK_BY_MODEL,
+        CACHE_MISS_TOK_BY_MODEL,
+    ),
+    "模块": (
+        REQ_CNT_BY_MODULE,
+        IN_TOK_BY_MODULE,
+        OUT_TOK_BY_MODULE,
+        TOTAL_TOK_BY_MODULE,
+        COST_BY_MODULE,
+        AVG_TIME_COST_BY_MODULE,
+        STD_TIME_COST_BY_MODULE,
+        CACHE_HIT_TOK_BY_MODULE,
+        CACHE_MISS_TOK_BY_MODULE,
+    ),
+}
+
 
 class OnlineTimeRecordTask(AsyncTask):
     """在线时间记录任务"""
@@ -1150,27 +1177,45 @@ class StatisticOutputTask(AsyncTask):
         """
         格式化按模型分类的统计数据
         """
+        return StatisticOutputTask._format_classified_stat(stats, "模型")
+
+    @staticmethod
+    def _format_classified_stat(stats: StatPeriodData, dimension: str) -> str:
+        """
+        格式化按指定维度（模型/模块）分类的统计数据
+        """
         if stats[TOTAL_REQ_CNT] <= 0:
             return ""
+        (
+            req_cnt_key,
+            in_tok_key,
+            out_tok_key,
+            total_tok_key,
+            cost_key,
+            avg_time_key,
+            std_time_key,
+            cache_hit_key,
+            cache_miss_key,
+        ) = _CLASSIFIED_STAT_KEYS[dimension]
         data_fmt = "{:<32}  {:>10}  {:>12}  {:>12}  {:>12}  {:>9.2f}¥  {:>10.1f}  {:>10.1f}  {:>12}  {:>12}  {:>12}  {:>12}"
 
         total_replies = stats.get(TOTAL_REPLY_CNT, 0)
 
         output = [
-            "按模型分类统计:",
-            " 模型名称                          调用次数    输入Token     输出Token     Token总量     累计花费    平均耗时(秒)  标准差(秒)  每次回复平均调用次数  每次回复平均Token数  每次调用平均Token     缓存命中率",
+            f"按{dimension}分类统计:",
+            f" {dimension}名称                          调用次数    输入Token     输出Token     Token总量     累计花费    平均耗时(秒)  标准差(秒)  每次回复平均调用次数  每次回复平均Token数  每次调用平均Token     缓存命中率",
         ]
-        for model_name, count in sorted(stats[REQ_CNT_BY_MODEL].items()):
-            name = f"{model_name[:29]}..." if len(model_name) > 32 else model_name
-            in_tokens = stats[IN_TOK_BY_MODEL][model_name]
-            out_tokens = stats[OUT_TOK_BY_MODEL][model_name]
-            tokens = stats[TOTAL_TOK_BY_MODEL][model_name]
-            cost = stats[COST_BY_MODEL][model_name]
-            avg_time_cost = stats[AVG_TIME_COST_BY_MODEL][model_name]
-            std_time_cost = stats[STD_TIME_COST_BY_MODEL][model_name]
+        for entry_name, count in sorted(stats[req_cnt_key].items()):
+            name = f"{entry_name[:29]}..." if len(entry_name) > 32 else entry_name
+            in_tokens = stats[in_tok_key][entry_name]
+            out_tokens = stats[out_tok_key][entry_name]
+            tokens = stats[total_tok_key][entry_name]
+            cost = stats[cost_key][entry_name]
+            avg_time_cost = stats[avg_time_key][entry_name]
+            std_time_cost = stats[std_time_key][entry_name]
             cache_hit_rate = _format_cache_hit_rate(
-                stats[CACHE_HIT_TOK_BY_MODEL][model_name],
-                stats[CACHE_MISS_TOK_BY_MODEL][model_name],
+                stats[cache_hit_key][entry_name],
+                stats[cache_miss_key][entry_name],
             )
 
             # 计算每次回复平均值
@@ -1214,64 +1259,7 @@ class StatisticOutputTask(AsyncTask):
         """
         格式化按模块分类的统计数据
         """
-        if stats[TOTAL_REQ_CNT] <= 0:
-            return ""
-        data_fmt = "{:<32}  {:>10}  {:>12}  {:>12}  {:>12}  {:>9.2f}¥  {:>10.1f}  {:>10.1f}  {:>12}  {:>12}  {:>12}  {:>12}"
-
-        total_replies = stats.get(TOTAL_REPLY_CNT, 0)
-
-        output = [
-            "按模块分类统计:",
-            " 模块名称                          调用次数    输入Token     输出Token     Token总量     累计花费    平均耗时(秒)  标准差(秒)  每次回复平均调用次数  每次回复平均Token数  每次调用平均Token     缓存命中率",
-        ]
-        for module_name, count in sorted(stats[REQ_CNT_BY_MODULE].items()):
-            name = f"{module_name[:29]}..." if len(module_name) > 32 else module_name
-            in_tokens = stats[IN_TOK_BY_MODULE][module_name]
-            out_tokens = stats[OUT_TOK_BY_MODULE][module_name]
-            tokens = stats[TOTAL_TOK_BY_MODULE][module_name]
-            cost = stats[COST_BY_MODULE][module_name]
-            avg_time_cost = stats[AVG_TIME_COST_BY_MODULE][module_name]
-            std_time_cost = stats[STD_TIME_COST_BY_MODULE][module_name]
-            cache_hit_rate = _format_cache_hit_rate(
-                stats[CACHE_HIT_TOK_BY_MODULE][module_name],
-                stats[CACHE_MISS_TOK_BY_MODULE][module_name],
-            )
-
-            # 计算每次回复平均值
-            avg_count_per_reply = count / total_replies if total_replies > 0 else 0.0
-            avg_tokens_per_reply = tokens / total_replies if total_replies > 0 else 0.0
-
-            # 计算每次调用平均token
-            avg_tokens_per_call = tokens / count if count > 0 else 0.0
-
-            # 格式化大数字
-            formatted_count = _format_large_number(count)
-            formatted_in_tokens = _format_large_number(in_tokens)
-            formatted_out_tokens = _format_large_number(out_tokens)
-            formatted_tokens = _format_large_number(tokens)
-            formatted_avg_count = _format_large_number(avg_count_per_reply) if total_replies > 0 else "N/A"
-            formatted_avg_tokens = _format_large_number(avg_tokens_per_reply) if total_replies > 0 else "N/A"
-            formatted_avg_tokens_per_call = _format_large_number(avg_tokens_per_call) if count > 0 else "N/A"
-
-            output.append(
-                data_fmt.format(
-                    name,
-                    formatted_count,
-                    formatted_in_tokens,
-                    formatted_out_tokens,
-                    formatted_tokens,
-                    cost,
-                    avg_time_cost,
-                    std_time_cost,
-                    formatted_avg_count,
-                    formatted_avg_tokens,
-                    formatted_avg_tokens_per_call,
-                    cache_hit_rate,
-                )
-            )
-
-        output.append("")
-        return "\n".join(output)
+        return StatisticOutputTask._format_classified_stat(stats, "模块")
 
     def _format_chat_stat(self, stats: StatPeriodData) -> str:
         """
