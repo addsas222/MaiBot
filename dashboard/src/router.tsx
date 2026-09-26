@@ -319,9 +319,8 @@ const skillsRoute = createRoute({
   component: lazyRouteComponent(() => import('./routes/skills'), 'SkillsPage'),
 })
 
-// 外部应用路由 - SillyTavern / Agnai 管理与嵌入
-export // 插件镜像源配置路由
-const pluginMirrorsRoute = createRoute({
+// 插件镜像源配置路由
+export const pluginMirrorsRoute = createRoute({
   getParentRoute: () => protectedRoute,
   path: '/plugin-mirrors',
   component: lazyRouteComponent(() => import('./routes/plugin-mirrors'), 'PluginMirrorsPage'),
@@ -334,6 +333,7 @@ const mcpSettingsRoute = createRoute({
   component: lazyRouteComponent(() => import('./routes/mcp-settings'), 'MCPSettingsPage'),
 })
 
+// 外部应用路由 - SillyTavern / Agnai 管理与嵌入
 const externalEnginesRoute = createRoute({
   getParentRoute: () => protectedRoute,
   path: '/external-engines',

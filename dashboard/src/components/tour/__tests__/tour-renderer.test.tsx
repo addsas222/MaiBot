@@ -11,7 +11,7 @@ import { TourRenderer } from '../tour-renderer'
 const captured = vi.hoisted(() => ({ props: null as Record<string, unknown> | null }))
 
 vi.mock('react-joyride', () => ({
-  default: (props: Record<string, unknown>) => {
+  Joyride: (props: Record<string, unknown>) => {
     captured.props = props
     return <div data-testid="joyride-mock" />
   },
@@ -115,7 +115,8 @@ describe('TourRenderer 渲染联动', () => {
     expect(captured.props?.run).toBe(true)
     expect(captured.props?.stepIndex).toBe(0)
     expect(captured.props?.steps).toBe(steps)
-    expect(captured.props?.callback).toBe(context.handleJoyrideCallback)
+    // react-joyride 3.2.0 把回调 prop 从 callback 改名为 onEvent（类型也由 CallBackProps 改为 EventData）
+    expect(captured.props?.onEvent).toBe(context.handleJoyrideCallback)
     expect(captured.props?.locale).toMatchObject({
       back: '上一步',
       last: '完成',

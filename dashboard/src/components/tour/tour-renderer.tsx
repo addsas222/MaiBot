@@ -52,6 +52,16 @@ const joyrideStyles = {
   },
 }
 
+// 中文本地化（react-joyride 3.2.0 的 Locale 字段：nextWithProgress 取代了旧的 nextLabelWithProgress）
+const locale = {
+  back: '上一步',
+  close: '关闭',
+  last: '完成',
+  next: '下一步',
+  nextWithProgress: '下一步 ({current}/{total})',
+  open: '打开对话框',
+  skip: '跳过',
+}
 
 export function TourRenderer() {
   const { state, getCurrentSteps, handleJoyrideCallback } = useTour()
@@ -168,9 +178,11 @@ export function TourRenderer() {
     <Joyride
       key={`tour-step-${state.stepIndex}`}
       steps={steps}
+      stepIndex={state.stepIndex}
       run={state.isRunning}
       continuous
       onEvent={handleJoyrideCallback}
+      locale={locale}
       options={{
         ...joyrideStyles,
         scrollOffset: 80,

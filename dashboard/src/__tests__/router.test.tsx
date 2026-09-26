@@ -67,6 +67,11 @@ vi.mock('@/routes/plugin-config-embed', () => ({ PluginConfigEmbedPage: StubPage
 vi.mock('@/routes/plugin-mirrors-embed', () => ({ PluginMirrorsEmbedPage: StubPage }))
 vi.mock('@/routes/plugin-mirrors', () => ({ PluginMirrorsPage: StubPage }))
 vi.mock('@/routes/mcp-settings', () => ({ MCPSettingsPage: StubPage }))
+// 本地新增页面：技能、外置引擎、插件自定义页面
+vi.mock('@/routes/skills', () => ({ SkillsPage: StubPage }))
+vi.mock('@/routes/external-engines', () => ({ ExternalEnginesPage: StubPage }))
+vi.mock('@/routes/plugin-pages/index.tsx', () => ({ PluginWebuiPagesIndexPage: StubPage }))
+vi.mock('@/routes/plugin-pages/plugin-page.tsx', () => ({ PluginWebuiPage: StubPage }))
 vi.mock('@/routes/data-transfer', () => ({ DataTransferPage: StubPage }))
 vi.mock('@/routes/settings/index.tsx', () => ({ SettingsPage: StubPage }))
 vi.mock('@/routes/config/pack-market', () => ({ default: StubPage }))
@@ -104,6 +109,11 @@ const expectedPaths = [
   '/adapter-management',
   '/plugin-mirrors',
   '/mcp-settings',
+  // 本地新增页面路由：技能、外置引擎、插件自定义页面
+  '/skills',
+  '/external-engines',
+  '/plugin-pages',
+  '/plugin-pages/$pluginId',
   '/data-transfer',
   '/logs',
   '/reasoning-process',

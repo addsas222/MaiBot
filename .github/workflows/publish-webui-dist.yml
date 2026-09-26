@@ -18,6 +18,10 @@ permissions:
 
 jobs:
   build-and-publish:
+    # maibot-dashboard 是上游仓库在 PyPI 上的发行包，fork 无法（也不应）代为发布：
+    # 之前每次 dashboard/** 变更推送都会在这里以 403 收场。这里限定只有上游仓库执行；
+    # fork 若确需发布自己的发行包，请改成自己的项目名与凭据再放开此判断。
+    if: github.repository == 'Mai-with-u/MaiBot'
     outputs:
       webui_version: ${{ steps.package_version.outputs.webui_version }}
     runs-on: ubuntu-24.04

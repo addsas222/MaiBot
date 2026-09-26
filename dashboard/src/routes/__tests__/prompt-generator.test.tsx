@@ -207,7 +207,7 @@ describe('PromptGeneratorPage 生成成功', () => {
     renderPage()
     await generatePersona('  一个测试人设  ')
 
-    // source_text 会被 trim
+    // source_text 会被 trim；max_tokens 取页面默认值 8192（与后端默认一致，避免推理模型预算截断）
     expect(promptApi.generatePromptPersona).toHaveBeenCalledWith({
       model_name: 'gpt-test',
       source_text: '一个测试人设',
@@ -215,7 +215,7 @@ describe('PromptGeneratorPage 生成成功', () => {
       language: '简体中文',
       extra_requirements: '',
       temperature: 0.3,
-      max_tokens: 1800,
+      max_tokens: 8192,
     })
     expect(toastMock).toHaveBeenCalledWith({
       title: '人设解析完成',

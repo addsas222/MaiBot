@@ -226,6 +226,11 @@ function BotConfigPageContent() {
         /Invalid TOML document: only letter, numbers, dashes and underscores are allowed in keys/,
         'TOML 文档错误：键名只能包含字母、数字、短横线和下划线',
       ],
+      // smol-toml 1.9 起把该消息改为 illegal character in key（依赖范围 ^1.5.2 两个版本都可能装到）
+      [
+        /Invalid TOML document: illegal character in key/,
+        'TOML 文档错误：键名只能包含字母、数字、短横线和下划线',
+      ],
       [/Invalid TOML document: (.+)/, 'TOML 文档错误：$1'],
 
       // 位置错误系列

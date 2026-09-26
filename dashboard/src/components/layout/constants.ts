@@ -40,6 +40,7 @@ const DataTransferIcon: MenuIcon = (props) => createElement(HardDrive, props)
 const ReplyEffectsIcon: MenuIcon = (props) => createElement(Activity, props)
 const SkillsIcon: MenuIcon = (props) => createElement(BookOpen, props)
 const PluginWebuiPagesIcon: MenuIcon = (props) => createElement(AppWindow, props)
+const ExternalEnginesIcon: MenuIcon = (props) => createElement(PlugZap, props)
 
 export const menuSections: MenuSection[] = [
   {
@@ -133,7 +134,11 @@ export const menuSections: MenuSection[] = [
         path: '/plugin-pages',
       },
       { icon: McpIcon, label: 'sidebar.menu.mcpSettings', path: '/mcp-settings' },
-      { icon: PlugZap, label: 'sidebar.menu.externalEngines', path: '/external-engines' },
+      {
+        icon: ExternalEnginesIcon,
+        label: 'sidebar.menu.externalEngines',
+        path: '/external-engines',
+      },
     ],
   },
   {

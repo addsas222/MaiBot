@@ -11,6 +11,11 @@
  * 用普通函数则始终有效，需要断言调用的测试自行 vi.spyOn 即可。
  */
 import '@testing-library/jest-dom/vitest'
+import { configure } from '@testing-library/react'
+
+// RTL 默认异步等待上限 1s：CI 机器负载高时，页面级用例的多轮查询会被误判为
+// “找不到元素”。放宽到 5s——真正的失败仍然会失败，只是给出足够的渲染时间。
+configure({ asyncUtilTimeout: 5000 })
 
 // ResizeObserver：Radix、recharts、虚拟列表等组件在挂载时就会实例化它
 globalThis.ResizeObserver = class ResizeObserver {
