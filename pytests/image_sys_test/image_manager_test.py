@@ -203,6 +203,17 @@ def patch_external_dependencies(monkeypatch):
     llm_options_mod = types.SimpleNamespace(LLMImageOptions=lambda **kwargs: types.SimpleNamespace(**kwargs))
     monkeypatch.setitem(sys.modules, "src.common.data_models.llm_service_data_models", llm_options_mod)
 
+    # Patch config so a VLM task counts as configured, otherwise描述生成会被跳过
+    class _ModelTaskConfig:
+        vlm = types.SimpleNamespace(model_list=["dummy-vlm"])
+
+    config_mod = types.SimpleNamespace(
+        config_manager=types.SimpleNamespace(
+            get_model_config=lambda: types.SimpleNamespace(model_task_config=_ModelTaskConfig())
+        )
+    )
+    monkeypatch.setitem(sys.modules, "src.config.config", config_mod)
+
     # If module already imported, reload it to apply patches
     mod_name = "src.chat.image_system.image_manager"
     if mod_name in sys.modules:

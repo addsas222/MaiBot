@@ -1,4 +1,4 @@
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import Any, Dict, List, Optional, Sequence, Set, Tuple
 
 from json_repair import repair_json
 
@@ -289,6 +289,12 @@ def parse_llm_json_list(response: str, *, label: str) -> Optional[List[Any]]:
         logger.warning(f"{label}响应格式异常，按无结果处理")
         return None
     return parsed
+
+
+def render_judge_entries(entries: Sequence[Tuple[str, str]]) -> str:
+    """把 (content, source_id) 候选渲染为批量判定提示词的 entries 文本。"""
+
+    return "\n".join(f'- content="{content}", source_id="{source_id}"' for content, source_id in entries)
 
 
 def parse_judge_response(response: str, *, judged_key: str, label: str) -> Set[str]:

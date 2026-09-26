@@ -5,7 +5,7 @@
 所有请求走共享的 ``get_main_http_client()``。
 """
 
-from typing import Optional
+from typing import Any, Optional
 
 import httpx
 
@@ -35,6 +35,31 @@ def _normalize_base_url(base_url: str, backend_label: str) -> str:
     if not normalized:
         raise ValueError(f"{backend_label} 后端 base_url 未配置，请在 tts 配置中填写服务地址。")
     return normalized
+
+
+def _missing_fields(fields: tuple[tuple[str, Any], ...]) -> list[str]:
+    """返回取值为空白的字段名列表。"""
+    return [field_name for field_name, field_value in fields if not str(field_value or "").strip()]
+
+
+def missing_config_fields(provider: str) -> list[str]:
+    """返回指定 TTS provider 下缺失的必配后端字段名，齐全时返回空列表。
+
+    必配项与各后端实现的真实约束保持一致（openai_compat 的 api_key 可选，
+    本地免密 TTS 服务属合法部署）；base_url 由 ``_normalize_base_url`` 在请求前
+    校验，故不在本清单内。provider 无法识别时返回空列表，交由分发处报未知 provider。
+    """
+    tts_cfg = global_config.tts
+    if provider == "openai_compat":
+        return _missing_fields((("base_url", tts_cfg.openai_compat.base_url),))
+    if provider == "gpt_sovits":
+        backend_cfg = tts_cfg.gpt_sovits
+        return _missing_fields(
+            (("ref_audio_path", backend_cfg.ref_audio_path), ("prompt_text", backend_cfg.prompt_text))
+        )
+    if provider == "fish_speech":
+        return _missing_fields((("reference_id", tts_cfg.fish_speech.reference_id),))
+    return []
 
 
 async def openai_compat_synthesize(

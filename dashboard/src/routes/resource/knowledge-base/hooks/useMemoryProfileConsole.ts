@@ -155,6 +155,13 @@ export function useMemoryProfileConsole({
   const initialLoadedRef = useRef(false)
   const appliedLocateTokenRef = useRef(0)
   const aliasRequestIdRef = useRef(0)
+  // 证据条数走 ref：让 loadProfileEvidence 保持稳定，避免「改条数 → 回调身份变化 →
+  // 人物效应重跑」造成同一人物重复拉取证据（并让「刷新证据」的强制刷新被后来的普通请求覆盖）。
+  const evidenceLimitRef = useRef(evidenceLimit)
+
+  useEffect(() => {
+    evidenceLimitRef.current = evidenceLimit
+  }, [evidenceLimit])
 
   const selectedProfile = useMemo(
     () => profiles.find((item) => item.person_id === selectedPersonId) ?? null,
@@ -221,7 +228,7 @@ export function useMemoryProfileConsole({
       try {
         const payload = await getMemoryProfileEvidence({
           personId: cleanPersonId,
-          limit: parsePositiveInt(evidenceLimit, PROFILE_QUERY_EVIDENCE_LIMIT),
+          limit: parsePositiveInt(evidenceLimitRef.current, PROFILE_QUERY_EVIDENCE_LIMIT),
           forceRefresh: Boolean(options?.forceRefresh),
         })
         if (payload.success === false) {
@@ -240,7 +247,7 @@ export function useMemoryProfileConsole({
         setEvidenceLoading(false)
       }
     },
-    [evidenceLimit, toast]
+    [toast]
   )
 
   const loadProfileAliases = useCallback(

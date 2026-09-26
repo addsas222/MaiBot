@@ -27,7 +27,7 @@ from src.common.logger import get_logger
 from src.prompt.prompt_manager import prompt_manager
 from src.services.llm_service import LLMServiceClient
 
-from .expression_utils import parse_judge_response, parse_llm_json_list
+from .expression_utils import parse_judge_response, parse_llm_json_list, render_judge_entries
 
 logger = get_logger("bad_meme_filter")
 
@@ -413,12 +413,6 @@ def filter_bad_meme_expressions(
     return kept, rejected
 
 
-def _render_judge_entries(entries: Sequence[Tuple[str, str]]) -> str:
-    """把黑话候选渲染为 LLM 判定输入。"""
-
-    return "\n".join(f'- content="{content}", source_id="{source_id}"' for content, source_id in entries)
-
-
 def _parse_judge_response(response: str) -> Set[str]:
     """解析烂梗判定 LLM 响应，返回判定为烂梗的 content 集合。"""
 
@@ -444,7 +438,7 @@ async def judge_bad_meme_with_llm(
         return set()
 
     prompt_template = prompt_manager.get_prompt("judge_bad_meme")
-    prompt_template.add_context("entries", _render_judge_entries(entries))
+    prompt_template.add_context("entries", render_judge_entries(entries))
     prompt = await prompt_manager.render_prompt(prompt_template)
 
     try:

@@ -38,36 +38,6 @@ def get_tool_spec() -> ToolSpec:
     )
 
 
-def _collect_missing_provider_fields() -> list[str]:
-    """检查当前 provider 下必配后端参数是否齐全。
-
-    必配项与各后端实现的真实约束保持一致（openai_compat 的 api_key 可选，
-    本地免密 TTS 服务属合法部署）。
-    """
-
-    provider = str(global_config.tts.provider or "").strip()
-
-    def _format_missing(fields: tuple[tuple[str, Any], ...]) -> list[str]:
-        return [
-            f"tts.{provider}.{field_name}"
-            for field_name, field_value in fields
-            if not str(field_value or "").strip()
-        ]
-
-    if provider == "openai_compat":
-        backend_cfg = global_config.tts.openai_compat
-        return _format_missing((("base_url", backend_cfg.base_url),))
-    if provider == "gpt_sovits":
-        backend_cfg = global_config.tts.gpt_sovits
-        return _format_missing(
-            (("ref_audio_path", backend_cfg.ref_audio_path), ("prompt_text", backend_cfg.prompt_text))
-        )
-    if provider == "fish_speech":
-        backend_cfg = global_config.tts.fish_speech
-        return _format_missing((("reference_id", backend_cfg.reference_id),))
-    return []
-
-
 async def handle_tool(
     tool_ctx: BuiltinToolRuntimeContext,
     invocation: ToolInvocation,
@@ -96,11 +66,13 @@ async def handle_tool(
             structured_content=structured_content,
         )
 
-    missing_fields = _collect_missing_provider_fields()
+    provider = str(global_config.tts.provider or "").strip()
+    missing_fields = tts_manager.missing_config_fields(provider)
     if missing_fields:
+        missing_labels = "、".join(f"tts.{provider}.{field_name}" for field_name in missing_fields)
         return tool_ctx.build_failure_result(
             invocation.tool_name,
-            f"TTS 后端参数缺失：{'、'.join(missing_fields)}，请先在配置文件中补全后再调用。",
+            f"TTS 后端参数缺失：{missing_labels}，请先在配置文件中补全后再调用。",
             structured_content=structured_content,
         )
 

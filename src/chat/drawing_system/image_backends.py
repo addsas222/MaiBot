@@ -118,6 +118,30 @@ def _first_dict_item(items: Any) -> dict[str, Any] | None:
     return None
 
 
+def _missing_fields(fields: tuple[tuple[str, Any], ...]) -> list[str]:
+    """返回取值为空白的字段名列表。"""
+    return [field_name for field_name, field_value in fields if not str(field_value or "").strip()]
+
+
+def missing_config_fields(provider: str) -> list[str]:
+    """返回指定绘图 provider 下缺失的必配后端字段名，齐全时返回空列表。
+
+    字段清单只包含各后端自身校验中“配上即可放行”的必要项，是后端校验的真子集：
+    comfyui 的 base_url / prompt_node_id、工作流文件存在性等仍由后端调用时校验，
+    因此本函数不会掩盖后端错误。provider 无法识别时返回占位字段名，供调用方按
+    “未配置完整”处理（与绘图分发处的未知 provider 报错互补）。
+    """
+    image_cfg = global_config.image_generation
+    if provider == "openai_compat":
+        backend_cfg = image_cfg.openai_compat
+        return _missing_fields((("base_url", backend_cfg.base_url), ("model", backend_cfg.model)))
+    if provider == "comfyui":
+        return _missing_fields((("workflow_path", image_cfg.comfyui.workflow_path),))
+    if provider == "sd_webui":
+        return _missing_fields((("base_url", image_cfg.sd_webui.base_url),))
+    return ["provider"]
+
+
 async def openai_compat_generate(
     prompt: str,
     *,

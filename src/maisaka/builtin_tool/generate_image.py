@@ -24,20 +24,6 @@ def _read_png_dimensions(image_bytes: bytes) -> tuple[int, int] | None:
     return width, height
 
 
-def _is_backend_configured() -> bool:
-    """检查当前绘图 provider 的必要后端参数是否已填写。"""
-    image_cfg = global_config.image_generation
-    provider = str(image_cfg.provider or "").strip()
-    if provider == "openai_compat":
-        backend_cfg = image_cfg.openai_compat
-        return bool(str(backend_cfg.base_url or "").strip()) and bool(str(backend_cfg.model or "").strip())
-    if provider == "comfyui":
-        return bool(str(image_cfg.comfyui.workflow_path or "").strip())
-    if provider == "sd_webui":
-        return bool(str(image_cfg.sd_webui.base_url or "").strip())
-    return False
-
-
 def get_tool_spec() -> ToolSpec:
     """获取图片生成工具声明。"""
     return ToolSpec(
@@ -84,7 +70,7 @@ async def handle_tool(
     }
 
     image_cfg = global_config.image_generation
-    if not image_cfg.enable or not _is_backend_configured():
+    if not image_cfg.enable or drawing_manager.missing_config_fields(str(image_cfg.provider or "").strip()):
         return tool_ctx.build_failure_result(
             invocation.tool_name,
             "绘图功能未启用或当前后端参数未配置完整，无法生成图片。",

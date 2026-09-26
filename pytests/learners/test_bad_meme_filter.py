@@ -2,6 +2,7 @@
 
 import pytest
 
+from src.learners import bad_meme_filter
 from src.learners.bad_meme_filter import (
     BAD_MEME_KEYWORDS,
     _parse_judge_response,
@@ -114,8 +115,11 @@ def test_is_bad_meme_misses(text: str) -> None:
     assert is_bad_meme(text) is None
 
 
-def test_filter_bad_meme_jargons_keeps_normal_entries() -> None:
+def test_filter_bad_meme_jargons_keeps_normal_entries(monkeypatch) -> None:
     """规则层过滤黑话时应保留正常词条，移除烂梗词条。"""
+
+    # 危险词库来自网络同步的本地文件，测试内注入自身词源，避免依赖 data/danger_words.txt
+    monkeypatch.setattr(bad_meme_filter, "get_danger_words", lambda: ["yyds"])
 
     entries = [("yyds", "1"), ("泰裤辣", "2"), ("内卷", "3"), ("nmsl", "4")]
     kept, rejected = filter_bad_meme_jargons(entries, session_id="test")

@@ -8,7 +8,7 @@ from src.common.logger import get_logger
 from src.common.utils.image_path import serialize_stored_image_path
 from src.config.config import global_config
 
-from .image_backends import comfyui_generate, openai_compat_generate, sd_webui_generate
+from .image_backends import comfyui_generate, missing_config_fields, openai_compat_generate, sd_webui_generate
 
 logger = get_logger("drawing_manager")
 
@@ -19,6 +19,12 @@ IMAGE_DIR = DATA_DIR / "images"
 
 class DrawingManager:
     """绘图生成管理器。"""
+
+    @staticmethod
+    def missing_config_fields(provider: str) -> list[str]:
+        """返回指定 provider 下缺失的必配后端字段名，供内置工具做前置检查。"""
+
+        return missing_config_fields(provider)
 
     async def generate_and_save(self, prompt: str, negative_prompt: str = "") -> tuple[str, bytes]:
         """按全局配置的后端生成图片并写入 data/images 落盘子目录。

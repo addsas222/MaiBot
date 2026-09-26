@@ -1045,9 +1045,14 @@ def test_webui_memory_episode_list_resolves_platform_user_id(client: TestClient,
             "count": 1,
         }
 
+    def fake_batch_get_person_names(person_ids):
+        # 列表接口按 person_id 批量取姓名：平台账号先解析成 person_id，再用它查名字
+        assert set(person_ids) == {"resolved-person-id"}
+        return {"resolved-person-id": "测试人物"}
+
     monkeypatch.setattr(memory_router_module, "resolve_person_id_for_memory", fake_resolve_person_id_for_memory)
     monkeypatch.setattr(memory_router_module.memory_service, "episode_admin", fake_episode_admin)
-    monkeypatch.setattr(memory_router_module, "_get_person_name_for_person_id", lambda person_id: "测试人物")
+    monkeypatch.setattr(memory_router_module, "_batch_get_person_names", fake_batch_get_person_names)
 
     response = client.get(
         "/api/webui/memory/episodes",

@@ -3,7 +3,7 @@
 from src.common.logger import get_logger
 from src.config.config import global_config
 
-from .tts_backends import fish_speech_synthesize, gpt_sovits_synthesize, openai_compat_synthesize
+from .tts_backends import fish_speech_synthesize, gpt_sovits_synthesize, missing_config_fields, openai_compat_synthesize
 
 logger = get_logger("tts_system")
 
@@ -14,6 +14,12 @@ class TtsManager:
     负责按 ``global_config.tts.provider`` 分发到具体后端，并把文本截断到
     ``global_config.tts.max_text_length``；后端异常原样向上抛出。
     """
+
+    @staticmethod
+    def missing_config_fields(provider: str) -> list[str]:
+        """返回指定 provider 下缺失的必配后端字段名，供内置工具做前置检查。"""
+
+        return missing_config_fields(provider)
 
     async def synthesize(self, text: str) -> tuple[bytes, str]:
         """合成语音。
