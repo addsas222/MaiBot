@@ -81,6 +81,7 @@ from src.maisaka.jargon_context_matcher import (
     extract_jargon_reference_contents,
 )
 from src.maisaka.memory.heuristic_injector import heuristic_memory_injector
+from src.maisaka.memory.image_injector import image_memory_injector
 from src.maisaka.memory.worldbook_injector import (
     build_greeting_hint_if_first_contact,
     build_worldbook_injection,
@@ -527,6 +528,16 @@ class MaisakaReasoningEngine:
                 logger.debug(f"{self._runtime.log_prefix} 人物画像自动注入失败，已跳过: {exc}")
                 return []
 
+        async def build_image_memory_message() -> str:
+            try:
+                return await image_memory_injector.build_injection_message(
+                    session_id=str(self._runtime.session_id or ""),
+                    source_messages=source_messages,
+                )
+            except Exception as exc:
+                logger.debug(f"{self._runtime.log_prefix} 图片记忆自然拉起失败，已跳过: {exc}")
+                return ""
+
         async def build_worldbook_messages() -> list[str]:
             try:
                 session_id = str(self._runtime.session_id or "")
@@ -541,15 +552,19 @@ class MaisakaReasoningEngine:
             heuristic_memory_message,
             profile_messages,
             worldbook_messages,
+            image_memory_message,
         ) = await asyncio.gather(
             build_heuristic_memory_message(),
             build_profile_messages(),
             build_worldbook_messages(),
+            build_image_memory_message(),
         )
         if heuristic_memory_message:
             injected_messages.append(heuristic_memory_message)
         injected_messages.extend(profile_messages)
         injected_messages.extend(worldbook_messages)
+        if image_memory_message:
+            injected_messages.append(image_memory_message)
         return injected_messages
 
     def _refresh_jargon_reference_message(self) -> Optional[ReferenceMessage]:
@@ -1013,6 +1028,9 @@ class MaisakaReasoningEngine:
             planner_total_tokens=response.total_tokens if response is not None else None,
             planner_duration_ms=state.planner_duration_ms if response is not None else None,
             planner_prompt_html_uri=response.prompt_html_uri if response is not None else None,
+            planner_prompt_cache_hit_tokens=response.prompt_cache_hit_tokens if response is not None else None,
+            planner_prompt_cache_miss_tokens=response.prompt_cache_miss_tokens if response is not None else None,
+            planner_context_sections=list(response.context_sections) if response is not None else None,
             tools=state.tool_monitor_results,
             time_records=dict(completed_cycle.time_records),
             agent_state=self._runtime._agent_state,
@@ -1386,7 +1404,6 @@ class MaisakaReasoningEngine:
 
     async def _end_cycle(self, cycle_detail: CycleDetail, only_long_execution: bool = True) -> CycleDetail:
         """结束并记录一轮 Maisaka 思考循环。"""
-        self._runtime.history_loop.append(cycle_detail)
         await self._post_process_chat_history_after_cycle(cycle_detail)
         cycle_detail.end_time = time.time()
 

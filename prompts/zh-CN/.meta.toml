@@ -28,6 +28,26 @@ display_name = "去AI味"
 advanced = true
 description = "回复生成时附加的去AI味写作规则模板，基于四层自检体系（禁用词/风格一致性/内容质量/活人感终审）约束回复更像真人说话。"
 
+[retro_replyer]
+display_name = "复古回复"
+advanced = true
+description = "复古模式（experimental.replyer_retro_prompt）下的群聊回复模板，把全部回复指令集中在一份模板里，整段作为一条消息发送。"
+
+[retro_replyer_light]
+display_name = "复古回复（简短）"
+advanced = true
+description = "复古模式下的群聊简短回复模板，对应旧版 think_level=0 的轻量回复。"
+
+[retro_private_replyer]
+display_name = "复古私聊回复"
+advanced = true
+description = "复古模式下的私聊回复模板，按旧版方式集中回复指令。"
+
+[retro_private_replyer_self]
+display_name = "复古私聊补充回复"
+advanced = true
+description = "复古模式下的私聊补充回复模板，用于在麦麦自己刚刚的发言基础上继续补充。"
+
 [default_expressor]
 display_name = "改写器"
 advanced = true
@@ -152,3 +172,8 @@ description = "用于识别聊天中图片描述或表情包文本中的违规�
 display_name = "烂梗判定"
 advanced = true
 description = "用于从聊天中提取的黑话/梗候选词条中识别属于烂梗的词条（低俗辱骂、性暗示、歧视攻击等）。"
+
+[a_memorix_chat_summary]
+display_name = "长期记忆摘要抽取"
+advanced = true
+description = "用于从当前聊天窗口中抽取可写入长期记忆的增量信息与重要知识。"

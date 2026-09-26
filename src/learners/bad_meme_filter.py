@@ -17,11 +17,11 @@ from typing import List, Optional, Sequence, Set, Tuple
 import asyncio
 import re
 
-from sqlmodel import col, select
+from sqlmodel import select
 
 from src.common.data_models.llm_service_data_models import LLMGenerationOptions
 from src.common.database.database import get_db_session
-from src.common.database.database_model import ImageType, Images, Jargon, JargonCreatedBy
+from src.common.database.database_model import ImageType, Images
 from src.common.http_client import get_main_http_client
 from src.common.logger import get_logger
 from src.prompt.prompt_manager import prompt_manager
@@ -268,9 +268,6 @@ BAD_MEME_BOUNDED_PATTERNS: List[Tuple[str, re.Pattern[str]]] = [
     ),
 ]
 
-_BAD_MEME_CLEANUP_BATCH_SIZE = 500
-_BAD_MEME_CLEANUP_POLL_SECONDS = 3600
-
 _MEME_TEXT_PATTERN = re.compile(r"[\s，。！？、,.!?~～·\-—_:：;；\"'“”‘’()（）【】\[\]《》<>]+")
 
 
@@ -488,41 +485,6 @@ def filter_bad_meme_jargons_with_llm(
             continue
         kept.append((content, source_id))
     return kept, rejected
-
-
-def cleanup_bad_meme_jargons_from_db() -> int:
-    """清理数据库中已学习到、且命中烂梗规则的 AI 黑话记录。
-
-    手动创建的黑话记录不清理，避免误删用户主动保留的内容。
-
-    Returns:
-        清理的记录条数。
-    """
-
-    removed = 0
-    with get_db_session() as session:
-        statement = select(Jargon).where(col(Jargon.created_by) == JargonCreatedBy.AI)
-        for record in session.exec(statement).yield_per(100):
-            if removed >= _BAD_MEME_CLEANUP_BATCH_SIZE:
-                break
-            if record.content and is_bad_meme(record.content):
-                session.delete(record)
-                removed += 1
-                logger.info(f"清理数据库中已学习的烂梗黑话：content={record.content}")
-    if removed:
-        logger.info(f"烂梗黑话清理完成，共清理 {removed} 条记录")
-    return removed
-
-
-async def periodic_bad_meme_cleanup() -> None:
-    """按周期清理数据库中已学习的烂梗黑话。"""
-
-    while True:
-        try:
-            await asyncio.to_thread(cleanup_bad_meme_jargons_from_db)
-        except Exception as exc:
-            logger.error(f"烂梗黑话周期清理失败: {exc}", exc_info=True)
-        await asyncio.sleep(_BAD_MEME_CLEANUP_POLL_SECONDS)
 
 
 _DANGER_WORDS_SYNC_POLL_SECONDS = 24 * 3600

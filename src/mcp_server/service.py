@@ -14,7 +14,6 @@ from typing import TYPE_CHECKING, Any, Optional
 import asyncio
 import json
 import socket
-import threading
 
 from src.common.logger import get_logger
 
@@ -47,15 +46,6 @@ class MCPHostServerService:
         self._server_task: Optional[asyncio.Task[None]] = None
         self._config_signature: str = ""
         self._reload_callback_registered: bool = False
-        self._status_lock: threading.Lock = threading.Lock()
-        self._status_snapshot: dict[str, Any] = {
-            "running": False,
-            "host": "",
-            "port": 0,
-            "path": MCP_SERVER_PATH,
-            "auth": False,
-            "error": "",
-        }
 
     @staticmethod
     def _build_config_signature(server_config: "MCPHostServerConfig") -> str:
@@ -185,7 +175,6 @@ class MCPHostServerService:
         self._config_signature = signature
 
         if not server_config.enable:
-            self._update_status(running=False, host=server_config.host, port=server_config.port)
             return
 
         # 端口预检：uvicorn 绑定失败会 sys.exit(1)，SystemExit 作为 BaseException
@@ -239,50 +228,32 @@ class MCPHostServerService:
             if loop.time() >= deadline:
                 # 启动高峰期（a_memorix 预热、插件拉起等）主循环可能被同步阶段饿住，
                 # 15~60 秒内未就绪不代表失败：serve 任务仍活着就转后台看门狗等待，
-                # 就绪后自动修正状态；调用方按"本次窗口未就绪"处理，不阻断启动。
-                asyncio.get_running_loop().create_task(
-                    self._late_ready_watchdog(), name="mcp_host_late_ready"
-                )
+                # 调用方按"本次窗口未就绪"处理，不阻断启动。
+                asyncio.get_running_loop().create_task(self._log_late_ready_watchdog(), name="mcp_host_late_ready")
                 raise TimeoutError(
                     f"MCP 服务器 {STARTUP_TIMEOUT_SECONDS:.0f} 秒内未就绪（启动高峰竞争），已转后台继续等待"
                 )
             await asyncio.sleep(0.05)
 
-        self._update_status(
-            running=True,
-            host=server_config.host,
-            port=server_config.port,
-            auth=bool((server_config.auth_token or "").strip()),
-            error="",
-        )
         logger.info(f"MCP 服务器已启动: http://{server_config.host}:{server_config.port}{MCP_SERVER_PATH}")
 
-    async def _late_ready_watchdog(self) -> None:
-        """超时后的后台看门狗：等 serve 任务真正就绪或退出，并修正运行状态。"""
+    async def _log_late_ready_watchdog(self) -> None:
+        """超时后的后台看门狗：等 serve 任务真正就绪或退出，并把结果记进日志。
 
-        from src.config.config import global_config
+        serve 任务退出时 ``_log_serve_task_crash`` 回调已记录异常，这里只补上
+        "启动窗口后才就绪" 这一条正常路径的可观测性，不再维护第二份运行状态。
+        """
 
         server = self._uvicorn_server
         if server is None:
             return
 
-        server_config = global_config.mcp.server
         while not server.started:
             if self._server_task is None or self._server_task.done():
-                self._update_status(running=False, error="启动失败（serve 任务已退出）")
-                logger.error("MCP 宿主服务器在启动窗口后就绪前退出，已确认失败")
                 return
             await asyncio.sleep(0.25)
-        self._update_status(
-            running=True,
-            host=server_config.host,
-            port=server_config.port,
-            auth=bool((server_config.auth_token or "").strip()),
-            error="",
-        )
         logger.info(
-            f"MCP 宿主服务器已在启动窗口后就绪: "
-            f"http://{server_config.host}:{server_config.port}{MCP_SERVER_PATH}"
+            f"MCP 宿主服务器已在启动窗口后就绪: http://{server.config.host}:{server.config.port}{MCP_SERVER_PATH}"
         )
 
     async def restart(self, server_config: Optional["MCPHostServerConfig"] = None) -> None:
@@ -315,35 +286,6 @@ class MCPHostServerService:
                 await task
             except (asyncio.CancelledError, RuntimeError, Exception):
                 pass
-
-        self._update_status(running=False, error="")
-
-    def get_status_snapshot(self) -> dict[str, Any]:
-        """返回可跨线程读取的纯数据服务器状态快照。"""
-
-        with self._status_lock:
-            return json.loads(json.dumps(self._status_snapshot, ensure_ascii=False))
-
-    def _update_status(
-        self,
-        *,
-        running: bool,
-        host: str = "",
-        port: int = 0,
-        auth: bool = False,
-        error: str = "",
-    ) -> None:
-        """更新线程安全的状态快照。"""
-
-        with self._status_lock:
-            self._status_snapshot = {
-                "running": running,
-                "host": host,
-                "port": port,
-                "path": MCP_SERVER_PATH,
-                "auth": auth,
-                "error": error,
-            }
 
 
 _mcp_host_server_service = MCPHostServerService()

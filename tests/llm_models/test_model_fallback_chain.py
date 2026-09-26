@@ -1,9 +1,6 @@
 """模型降级链（fallback_model_list）选择逻辑测试。"""
 
 from types import SimpleNamespace
-from typing import Any
-
-import pytest
 
 from src.config.model_configs import TaskConfig
 from src.llm_models.utils_model import LLMOrchestrator

@@ -277,7 +277,7 @@ def test_install_plugin_rejects_missing_manifest_id(client: TestClient, monkeypa
 
     monkeypatch.setattr(management_module, "get_git_mirror_service", lambda: FakeGitMirrorService())
 
-    response = client.post(
+    client.post(
         "/api/webui/plugins/install",
         json={
             "plugin_id": "market.legacy",

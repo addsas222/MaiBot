@@ -73,6 +73,7 @@ class PluginLoader:
         host_version: str = "",
         plugin_type_filter: str = "",
         trusted_plugin_dirs: Optional[List[str]] = None,
+        force_plugin_compatibility: bool = False,
     ) -> None:
         """初始化插件加载器。
 
@@ -80,20 +81,27 @@ class PluginLoader:
             host_version: Host 版本号，用于 manifest 兼容性校验。
             plugin_type_filter: manifest plugin_type 过滤模式。
             trusted_plugin_dirs: 在过滤模式下始终允许加载的插件根目录。
+            force_plugin_compatibility: 是否跳过插件的 Host / SDK 版本范围校验。
         """
         self._loaded_plugins: Dict[str, PluginMeta] = {}
         self._failed_plugins: Dict[str, str] = {}
-        self._manifest_validator = ManifestValidator(host_version=host_version)
+        self._manifest_validator = ManifestValidator(
+            host_version=host_version,
+            force_plugin_compatibility=force_plugin_compatibility,
+        )
         self._compat_hook_installed = False
         self._blocked_plugin_reasons: Dict[str, str] = {}
         # 类型过滤模式与受信目录：runner_main 传入，用于在 manifest 校验前分流适配器/扩展插件
         self._plugin_type_filter = str(plugin_type_filter or "").strip()
         self._trusted_plugin_dirs = [Path(p).resolve() for p in (trusted_plugin_dirs or [])]
-        from src.plugin_runtime.runner.plugin_quarantine import PluginQuarantine
+        # 强制兼容模式下不再使用隔离记录：该开关的语义就是"即便版本范围不兼容也要加载"，
+        # 隔离记录会与之直接冲突（此前校验失败留下的记录会让插件永远进不了候选列表）。
+        # 关闭开关后隔离逻辑照常生效。
+        self._quarantine: Optional["PluginQuarantine"] = None
+        if not force_plugin_compatibility:
+            from src.plugin_runtime.runner.plugin_quarantine import PluginQuarantine
 
-        self._quarantine = PluginQuarantine(
-            Path("data/plugin_runtime/plugin_quarantine.json")
-        )
+            self._quarantine = PluginQuarantine(Path("data/plugin_runtime/plugin_quarantine.json"))
 
     def set_blocked_plugin_reasons(self, blocked_plugin_reasons: Optional[Dict[str, str]] = None) -> None:
         """更新当前加载器持有的拒绝加载插件列表。

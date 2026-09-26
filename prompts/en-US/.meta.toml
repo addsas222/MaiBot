@@ -28,6 +28,26 @@ display_name = "Humanizer"
 advanced = true
 description = "De-AI writing rules appended to reply generation, based on a four-layer self-check system (banned words / style consistency / content quality / human-feel final review) to make replies read more like a real person."
 
+[retro_replyer]
+display_name = "Retro reply"
+advanced = true
+description = "Group chat reply template for retro mode (experimental.replyer_retro_prompt), which puts all reply instructions into a single template sent as one message."
+
+[retro_replyer_light]
+display_name = "Retro reply (short)"
+advanced = true
+description = "Short group chat reply template for retro mode, matching the legacy light reply used when think_level=0."
+
+[retro_private_replyer]
+display_name = "Retro private reply"
+advanced = true
+description = "Private chat reply template for retro mode, organizing all reply instructions the legacy way."
+
+[retro_private_replyer_self]
+display_name = "Retro private follow-up reply"
+advanced = true
+description = "Private chat follow-up template for retro mode, used to keep adding to a message Mai just sent."
+
 [default_expressor]
 display_name = "Default Expressor"
 advanced = true
@@ -157,3 +177,8 @@ description = "Identifies non-compliant content (pornography/vulgarity, violence
 display_name = "Bad Meme Judgement"
 advanced = true
 description = "Identifies bad memes (vulgar insults, sexual innuendo, discriminatory or aggressive expressions) among jargon/meme candidates extracted from chats."
+
+[a_memorix_chat_summary]
+display_name = "Long-term Memory Summary Extraction"
+advanced = true
+description = "Extracts incremental long-term-memory information and important knowledge from the current chat window."

@@ -28,6 +28,26 @@ display_name = "AI味除去"
 advanced = true
 description = "返信生成時に付加されるAI味除去の執筆ルールテンプレート。四層の自己チェック体系（禁止語彙・スタイル一貫性・内容品質・人間らしさ最終審査）に基づき、返信をより人間らしい話し方に制約する。"
 
+[retro_replyer]
+display_name = "レトロ返信"
+advanced = true
+description = "レトロモード（experimental.replyer_retro_prompt）のグループチャット返信テンプレート。返信指示をひとつのテンプレートにまとめ、そのまま 1 通のメッセージとして送信する。"
+
+[retro_replyer_light]
+display_name = "レトロ返信（短め）"
+advanced = true
+description = "レトロモードのグループチャット短め返信テンプレート。旧版の think_level=0 の軽量返信に対応する。"
+
+[retro_private_replyer]
+display_name = "レトロ個人チャット返信"
+advanced = true
+description = "レトロモードの個人チャット返信テンプレート。旧版の方式で返信指示をまとめる。"
+
+[retro_private_replyer_self]
+display_name = "レトロ個人チャット補足返信"
+advanced = true
+description = "レトロモードの個人チャット補足返信テンプレート。直前に自分が送った発言に続けて補足するときに使う。"
+
 [default_expressor]
 display_name = "既定表現器"
 advanced = true
@@ -157,3 +177,8 @@ description = "チャット内の画像説明文やスタンプのテキスト�
 display_name = "クソネタ判定"
 advanced = true
 description = "チャットから抽出された黒話・ネタ候補の中から、クソネタ（低俗・罵倒、性的暗示、差別的・攻撃的な表現）に該当するものを識別するテンプレート。"
+
+[a_memorix_chat_summary]
+display_name = "長期記憶サマリー抽出"
+advanced = true
+description = "現在のチャット範囲から長期記憶に書き込める増分情報と重要な知識を抽出するテンプレート。"

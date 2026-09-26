@@ -45,6 +45,7 @@ from src.plugin_runtime.capabilities import (
     RuntimeRenderCapabilityMixin,
 )
 from src.plugin_runtime.capabilities.registry import register_capability_impls
+from src.plugin_runtime.compat_policy import is_force_plugin_compatibility_enabled
 from src.plugin_runtime.dependency_pipeline import PluginDependencyPipeline
 from src.plugin_runtime.hook_catalog import register_builtin_hook_specs
 from src.plugin_runtime.host.hook_dispatcher import HookDispatchResult, HookDispatcher
@@ -121,6 +122,7 @@ class PluginRuntimeManager(
             validate_python_package_dependencies=False,
             log_errors=False,
             log_compat_warnings=False,
+            force_plugin_compatibility=is_force_plugin_compatibility_enabled(),
         )
         self._plugin_dependency_pipeline: PluginDependencyPipeline = PluginDependencyPipeline()
         self._blocked_plugin_reasons: Dict[str, str] = {}
@@ -175,6 +177,7 @@ class PluginRuntimeManager(
             validate_python_package_dependencies=False,
             log_errors=False,
             log_compat_warnings=False,
+            force_plugin_compatibility=is_force_plugin_compatibility_enabled(),
         )
         return validator.build_plugin_dependency_map(plugin_dirs)
 
@@ -197,6 +200,7 @@ class PluginRuntimeManager(
             validate_python_package_dependencies=False,
             log_errors=False,
             log_compat_warnings=False,
+            force_plugin_compatibility=is_force_plugin_compatibility_enabled(),
         )
         excluded_ids = excluded_plugin_ids or set()
         provider_owners: Dict[str, List[str]] = {}
@@ -224,6 +228,7 @@ class PluginRuntimeManager(
             validate_python_package_dependencies=False,
             log_errors=False,
             log_compat_warnings=False,
+            force_plugin_compatibility=is_force_plugin_compatibility_enabled(),
         )
         normalized_plugin_type = str(plugin_type or "").strip().lower()
         plugin_ids: Set[str] = set()
@@ -1479,6 +1484,7 @@ class PluginRuntimeManager(
             validate_python_package_dependencies=False,
             log_errors=False,
             log_compat_warnings=False,
+            force_plugin_compatibility=is_force_plugin_compatibility_enabled(),
         )
         for plugin_path, manifest in validator.iter_plugin_manifests(plugin_dirs):
             plugin_locations.setdefault(manifest.id, []).append(plugin_path)

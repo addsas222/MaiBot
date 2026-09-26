@@ -7,6 +7,7 @@ from types import ModuleType, SimpleNamespace
 from pathlib import Path
 from datetime import datetime
 from typing import TYPE_CHECKING
+from unittest.mock import AsyncMock
 
 if TYPE_CHECKING:
     from src.common.data_models.message_component_data_model import MessageSequence, ForwardComponent
@@ -129,7 +130,8 @@ def setup_mocks(monkeypatch):
     emoji_manager_mod.emoji_manager = None  # 可以根据需要添加更多的属性或方法
 
     image_manager_mod = _stub_module("src.chat.image_system.image_manager")
-    image_manager_mod.image_manager = None  # 可以根据需要添加更多的属性或方法
+    # 图片组件在描述为空时不再吞异常，这里给出与生产一致的可用管理器（返回空描述）
+    image_manager_mod.image_manager = SimpleNamespace(get_image_description=AsyncMock(return_value=""))
 
     msg_utils_mod = _stub_module("src.common.utils.utils_message")
     msg_utils_mod.MessageUtils = None  # 可以根据需要添加更多的属性或方法
@@ -173,6 +175,22 @@ def load_message_via_file(monkeypatch):
     globals()["MessageSequence"] = MessageSequenceClass
     globals()["ForwardComponent"] = ForwardComponentClass
     return message_module
+
+
+@pytest.mark.asyncio
+async def test_image_save_failure_preserves_original_bytes(monkeypatch):
+    module = load_message_via_file(monkeypatch)
+    manager_module = sys.modules["src.chat.image_system.image_manager"]
+    manager = ModuleType("test_image_manager")
+    manager.get_image_description = AsyncMock(side_effect=OSError("磁盘写入失败"))
+    monkeypatch.setattr(manager_module, "image_manager", manager)
+    component = module.ImageComponent(binary_hash="", binary_data=b"original-image")
+
+    with pytest.raises(OSError, match="磁盘写入失败"):
+        await module.SessionMessage.process_image_component(None, component)
+
+    assert component.binary_data == b"original-image"
+    assert component.content == ""
 
 
 @pytest.mark.asyncio

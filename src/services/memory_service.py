@@ -506,6 +506,20 @@ class MemoryService:
             logger.warning(f"获取记忆统计失败: {exc}")
             return {}
 
+    async def image_memory(self, *, action: str, timeout_ms: int = 120000, **kwargs: Any) -> Dict[str, Any]:
+        """调用图片记忆的写入、相似检索和管理接口。"""
+
+        try:
+            payload = await self._invoke(
+                "image_memory",
+                {"action": str(action or "").strip(), **kwargs},
+                timeout_ms=timeout_ms,
+            )
+            return payload if isinstance(payload, dict) else {"success": False, "error": "invalid_payload"}
+        except Exception as exc:
+            logger.warning(f"图片记忆调用失败: {exc}")
+            return {"success": False, "error": str(exc)}
+
     async def graph_admin(self, *, action: str, **kwargs) -> Dict[str, Any]:
         try:
             return await self._invoke_admin("memory_graph_admin", action=action, **kwargs)
@@ -555,11 +569,25 @@ class MemoryService:
             logger.warning(f"运行时管理调用失败: {exc}")
             return {"success": False, "error": str(exc)}
 
+    async def bundle_admin(self, *, action: str, timeout_ms: int = 120000, **kwargs) -> Dict[str, Any]:
+        try:
+            return await self._invoke_admin("memory_bundle_admin", action=action, timeout_ms=timeout_ms, **kwargs)
+        except Exception as exc:
+            logger.warning(f"记忆包管理调用失败: {exc}")
+            return {"success": False, "error": str(exc)}
+
     async def tuning_admin(self, *, action: str, timeout_ms: int = 120000, **kwargs) -> Dict[str, Any]:
         try:
             return await self._invoke_admin("memory_tuning_admin", action=action, timeout_ms=timeout_ms, **kwargs)
         except Exception as exc:
             logger.warning(f"调优管理调用失败: {exc}")
+            return {"success": False, "error": str(exc)}
+
+    async def v5_admin(self, *, action: str, timeout_ms: Optional[int] = None, **kwargs) -> Dict[str, Any]:
+        try:
+            return await self._invoke_admin("memory_v5_admin", action=action, timeout_ms=timeout_ms, **kwargs)
+        except Exception as exc:
+            logger.warning(f"V5 记忆管理调用失败: {exc}")
             return {"success": False, "error": str(exc)}
 
     async def import_admin(self, *, action: str, timeout_ms: int = 120000, **kwargs) -> Dict[str, Any]:
