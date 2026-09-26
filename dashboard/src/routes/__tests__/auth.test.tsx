@@ -221,6 +221,9 @@ describe('AuthPage URL token 自动登录', () => {
         errorMessage: 'auth.verifyFailed',
       })
     )
+    // 自动登录成功后会跳转：必须等它发生，否则这次跳转会泄漏到下一个用例
+    // （下一个用例断言 navigate 未被调用，负载高时就会随机失败）
+    await waitFor(() => expect(navigateMock).toHaveBeenCalledWith({ to: '/' }))
     expect(window.location.hash).toBe('#/login')
   })
 
