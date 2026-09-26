@@ -203,7 +203,7 @@ def patch_external_dependencies(monkeypatch):
     llm_options_mod = types.SimpleNamespace(LLMImageOptions=lambda **kwargs: types.SimpleNamespace(**kwargs))
     monkeypatch.setitem(sys.modules, "src.common.data_models.llm_service_data_models", llm_options_mod)
 
-    # Patch config so a VLM task counts as configured, otherwise描述生成会被跳过
+    # 补配置桩：未配置 VLM 任务时描述生成会被跳过，用例需要它走到打桩的模型层
     class _ModelTaskConfig:
         vlm = types.SimpleNamespace(model_list=["dummy-vlm"])
 
