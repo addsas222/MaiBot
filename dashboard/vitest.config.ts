@@ -23,6 +23,9 @@ export default defineConfig({
     // 部分页面级集成测试要渲染整棵路由子树并等待多轮查询，默认 5s 偏紧
     testTimeout: 15000,
     hookTimeout: 15000,
+    // jsdom 集成用例在超过 4 个 worker 并行时会出现事件循环饥饿：同一套用例
+    // 不限并发时稳定有 5 例随机失败（找不到元素 / 用例收尾时报错），限 4 并发 0 例失败。
+    maxWorkers: 4,
     // 覆盖率：v8 provider，只统计 src 业务代码
     coverage: {
       provider: 'v8',
