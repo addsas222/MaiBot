@@ -386,7 +386,7 @@ class BaseMaisakaReplyGenerator(RetroReplyPromptMixin):
 
         raw_emoji = str(reply_tool_args.get("attach_emoji") or "").strip()
         if raw_emoji:
-            lines.append(f"除了当前你输出的回复，你还会（由另一个模型控制）发送一个 {raw_emoji} 表情包。")
+            lines.append(f"当前文字回复后还会单独发送已选中的第 {raw_emoji} 号表情包，无需在正文中输出序号。")
 
         return "\n".join(lines)
 
@@ -581,16 +581,16 @@ class BaseMaisakaReplyGenerator(RetroReplyPromptMixin):
 
     @staticmethod
     def _build_reply_reference_lines(reply_reason: str, reply_reference: str) -> List[str]:
-        """构建 replyer 的信息参考块，优先使用显式参考信息。"""
+        """将 Planner 内容和 reply 工具参考信息直接合并。"""
 
-        normalized_reply_reference = reply_reference.strip()
-        if normalized_reply_reference:
-            return [normalized_reply_reference]
-
+        reference_lines: List[str] = []
         normalized_reply_reason = reply_reason.strip()
         if normalized_reply_reason:
-            return [f"当前思考：\n{normalized_reply_reason}"]
-        return []
+            reference_lines.append(normalized_reply_reason)
+        normalized_reply_reference = reply_reference.strip()
+        if normalized_reply_reference:
+            reference_lines.append(normalized_reply_reference)
+        return reference_lines
 
     @classmethod
     def _build_reply_reference_message(cls, reply_reason: str, reply_reference: str) -> str:

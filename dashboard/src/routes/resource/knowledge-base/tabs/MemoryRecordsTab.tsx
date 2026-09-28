@@ -643,11 +643,11 @@ export function MemoryRecordsTab({ onAction, onCorrectionPlan }: MemoryRecordsTa
           aria-label="记忆多选操作"
         >
           <label
-            htmlFor="memory-records-select-all"
+            htmlFor="memory-record-select-all"
             className="flex cursor-pointer items-center gap-2 text-sm"
           >
             <Checkbox
-              id="memory-records-select-all"
+              id="memory-record-select-all"
               aria-label="全选当前结果"
               checked={allChecked ? true : checkedRecords.length > 0 ? 'indeterminate' : false}
               disabled={!records.length || searchQuery.isFetching}
